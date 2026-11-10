@@ -1018,9 +1018,16 @@ void applyPending() {
   switch (cmd.kind) {
     case PendingKind::None:
       return;
-    case PendingKind::Input:
-      if (!mappedInputManager.injectRemoteClick(cmd.button)) LOG_INF("DEV", "Input dropped: real input this frame");
+    case PendingKind::Input: {
+      static const char* const kNames[] = {"none", "confirm", "back", "next", "previous"};
+      const char* name = kNames[static_cast<int>(cmd.button)];
+      if (mappedInputManager.injectRemoteClick(cmd.button)) {
+        LOG_INF("DEV", "Input %s", name);
+      } else {
+        LOG_INF("DEV", "Input %s dropped: real input this frame", name);
+      }
       return;
+    }
     case PendingKind::Sleep:
       if (sleepFn) sleepFn();
       return;
