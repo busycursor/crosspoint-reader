@@ -24,6 +24,7 @@
 #include "home/HomeActivity.h"
 #include "library/LibraryListActivity.h"
 #include "network/CrossPointWebServerActivity.h"
+#include "network/ShelfSyncActivity.h"
 #include "network/UsbDriveActivity.h"
 #include "plugins/PluginCatalogActivity.h"
 #include "reader/ReaderActivity.h"
@@ -310,6 +311,20 @@ void ActivityManager::goToLibrary() {
   replaceActivity(std::move(activity));
 }
 
+void ActivityManager::goToShelfSync() {
+  const auto& servers = OPDS_STORE.getServers();
+  if (servers.empty()) {
+    goToBrowser();  // the server list offers "Add server"
+    return;
+  }
+  auto activity = makeUniqueNoThrow<ShelfSyncActivity>(renderer, mappedInput, servers[0]);
+  if (!activity) {
+    LOG_ERR("ACT", "OOM: shelf sync activity");
+    return;
+  }
+  replaceActivity(std::move(activity));
+}
+
 void ActivityManager::goToBrowser() {
   const auto& servers = OPDS_STORE.getServers();
   // Skip the server picker when there's only one server configured
@@ -365,7 +380,7 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
       initialMenuItem = HomeMenuItem::FILE_BROWSER;
     } else if (activityName == "Library") {
       initialMenuItem = HomeMenuItem::LIBRARY;
-    } else if (activityName == "OpdsBookBrowser" || activityName == "PluginCatalog") {
+    } else if (activityName == "OpdsBookBrowser" || activityName == "PluginCatalog" || activityName == "ShelfSync") {
       initialMenuItem = HomeMenuItem::OPDS_BROWSER;
     } else if (activityName == "CrossPointWebServer") {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;

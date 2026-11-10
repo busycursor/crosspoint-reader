@@ -70,7 +70,7 @@ class HomeActivity final : public Activity {
   void onLibraryOpen();
   void onSettingsOpen();
   void onFileTransferOpen();
-  void onOpdsBrowserOpen();
+  void onShelfSyncOpen();
   void onPluginsOpen();
 
   int getMenuItemCount() const;

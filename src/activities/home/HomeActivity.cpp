@@ -320,7 +320,7 @@ void HomeActivity::loop() {
         onLibraryOpen();
         break;
       case HomeMenuItem::OPDS_BROWSER:  // the library slot
-        hasPlugins ? onPluginsOpen() : onOpdsBrowserOpen();
+        hasPlugins ? onPluginsOpen() : onShelfSyncOpen();
         break;
       case HomeMenuItem::FILE_TRANSFER:
         onFileTransferOpen();
@@ -536,7 +536,7 @@ void HomeActivity::render(RenderLock&&) {
   std::vector<UIIcon> menuIcons = {Folder, Library, Transfer, Settings};
 
   if (hasLibrarySlot()) {
-    menuItems.insert(menuItems.begin() + 2, hasPlugins ? tr(STR_PLUGINS) : tr(STR_OPDS_BROWSER));
+    menuItems.insert(menuItems.begin() + 2, hasPlugins ? tr(STR_PLUGINS) : tr(STR_SHELF_SYNC));
     menuIcons.insert(menuIcons.begin() + 2, Plugins);
   }
 
@@ -582,6 +582,6 @@ void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 
 void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
 
-void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
+void HomeActivity::onShelfSyncOpen() { activityManager.goToShelfSync(); }
 
 void HomeActivity::onPluginsOpen() { activityManager.goToPlugins(hasOpdsServers); }

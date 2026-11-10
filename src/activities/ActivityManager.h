@@ -92,6 +92,7 @@ class ActivityManager {
   void goToFileBrowser(std::string path = {});
   void goToLibrary();
   void goToBrowser();
+  void goToShelfSync();
   void goToPlugins(bool showOpds);
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   void goToSleep(bool fromTimeout = false);
