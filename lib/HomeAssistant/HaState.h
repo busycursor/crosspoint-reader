@@ -23,7 +23,8 @@ using StateMap = std::map<std::string, EntityState>;
 // One HA state object: {"entity_id", "state", "attributes"}.
 bool parseStateObject(std::string_view json, std::string& entityId, EntityState& out);
 // What a card shows as the value: "On", "80.1 °F", "Partly cloudy, 72 °F",
-// "unavailable" for unknown or missing states.
+// "unavailable" for unknown or missing states, nothing for scenes, scripts
+// and buttons.
 std::string displayValue(const std::string& entityId, const EntityState& s);
 // Daily forecast entries (weather.get_forecasts) as "Wed 70/55  Thu 68/52".
 std::string forecastLine(std::string_view forecastArrayJson, int days);

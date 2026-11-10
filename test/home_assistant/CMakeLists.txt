@@ -3,6 +3,8 @@ add_executable(HomeAssistantTest
   HaDashboardTest.cpp
   HaStateTest.cpp
   HaIdlePolicyTest.cpp
+  HaLiveTest.cpp
+  ${REPO_ROOT}/lib/HomeAssistant/HaLive.cpp
   ${REPO_ROOT}/lib/HomeAssistant/HaIdlePolicy.cpp
   ${REPO_ROOT}/lib/HomeAssistant/HaState.cpp
   ${REPO_ROOT}/lib/HomeAssistant/HaDashboard.cpp

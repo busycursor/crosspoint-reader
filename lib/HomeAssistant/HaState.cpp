@@ -53,11 +53,21 @@ const char* conditionText(std::string_view c) {
     std::string_view key;
     const char* text;
   } kConditions[] = {
-      {"clear-night", "Clear"},     {"cloudy", "Cloudy"},     {"exceptional", "Exceptional"},
-      {"fog", "Fog"},               {"hail", "Hail"},         {"lightning", "Lightning"},
-      {"lightning-rainy", "Storms"}, {"partlycloudy", "Partly cloudy"}, {"pouring", "Pouring"},
-      {"rainy", "Rain"},            {"snowy", "Snow"},        {"snowy-rainy", "Sleet"},
-      {"sunny", "Sunny"},           {"windy", "Windy"},       {"windy-variant", "Windy"},
+      {"clear-night", "Clear"},
+      {"cloudy", "Cloudy"},
+      {"exceptional", "Exceptional"},
+      {"fog", "Fog"},
+      {"hail", "Hail"},
+      {"lightning", "Lightning"},
+      {"lightning-rainy", "Storms"},
+      {"partlycloudy", "Partly cloudy"},
+      {"pouring", "Pouring"},
+      {"rainy", "Rain"},
+      {"snowy", "Snow"},
+      {"snowy-rainy", "Sleet"},
+      {"sunny", "Sunny"},
+      {"windy", "Windy"},
+      {"windy-variant", "Windy"},
   };
   for (const auto& k : kConditions) {
     if (k.key == c) return k.text;
@@ -107,6 +117,9 @@ bool parseStateObject(std::string_view json, std::string& entityId, EntityState&
 }
 
 std::string displayValue(const std::string& entityId, const EntityState& s) {
+  // Actions: HA's state is only when they last ran.
+  const std::string_view domain = domainOf(entityId);
+  if (domain == "scene" || domain == "script" || domain == "button") return "";
   if (unavailable(s.state)) return "unavailable";
   if (domainOf(entityId) == "weather") {
     const char* text = conditionText(s.state);
@@ -157,8 +170,7 @@ ServiceCall brightnessCall(const std::string& entityId, int pct) {
 }
 
 bool isToggleable(const std::string& entityId) {
-  static constexpr std::string_view kToggle[] = {"light",          "switch",       "fan",
-                                                 "input_boolean", "media_player", "remote"};
+  static constexpr std::string_view kToggle[] = {"light", "switch", "fan", "input_boolean", "media_player", "remote"};
   const std::string_view domain = domainOf(entityId);
   for (const auto d : kToggle) {
     if (domain == d) return true;

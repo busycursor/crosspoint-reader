@@ -27,7 +27,11 @@ TEST(HaFormat, OnOff) {
 }
 
 TEST(HaFormat, NumberWithUnit) {
-  EXPECT_EQ(shown("sensor.t", "80.06", "\xC2\xB0" "F"), "80.1 \xC2\xB0" "F");
+  EXPECT_EQ(shown("sensor.t", "80.06",
+                  "\xC2\xB0"
+                  "F"),
+            "80.1 \xC2\xB0"
+            "F");
   EXPECT_EQ(shown("sensor.h", "62", "%"), "62 %");
   EXPECT_EQ(shown("sensor.p", "12.0", "W"), "12 W");
   EXPECT_EQ(shown("sensor.n", "-3.26"), "-3.3");
@@ -36,6 +40,12 @@ TEST(HaFormat, NumberWithUnit) {
 TEST(HaFormat, TextStatesPassThrough) {
   EXPECT_EQ(shown("sensor.appliance_status", "power_off"), "power_off");
   EXPECT_EQ(shown("sensor.left", "0:42:00"), "0:42:00");
+}
+
+TEST(HaFormat, ActionsShowNoValue) {
+  EXPECT_EQ(shown("scene.evening", "unknown"), "");
+  EXPECT_EQ(shown("script.bedtime", "off"), "");
+  EXPECT_EQ(shown("button.restart", "2026-11-10T08:00:00+00:00"), "");
 }
 
 TEST(HaFormat, MissingEntityIsUnavailable) {
@@ -59,14 +69,18 @@ TEST(HaFormat, UnitFromAttributes) {
   const auto s = parseState(
       R"({"entity_id":"sensor.t","state":"80.06","attributes":{"unit_of_measurement":"°F","friendly_name":"Outdoor"}})",
       "sensor.t");
-  EXPECT_EQ(ha::displayValue("sensor.t", s), "80.1 \xC2\xB0" "F");
+  EXPECT_EQ(ha::displayValue("sensor.t", s),
+            "80.1 \xC2\xB0"
+            "F");
 }
 
 TEST(HaFormat, WeatherConditionAndTemp) {
   const auto s = parseState(
       R"({"entity_id":"weather.home","state":"partlycloudy","attributes":{"temperature":71.6,"temperature_unit":"°F"}})",
       "weather.home");
-  EXPECT_EQ(ha::displayValue("weather.home", s), "Partly cloudy, 72 \xC2\xB0" "F");
+  EXPECT_EQ(ha::displayValue("weather.home", s),
+            "Partly cloudy, 72 \xC2\xB0"
+            "F");
 }
 
 TEST(HaFormat, ForecastLine) {
@@ -83,10 +97,14 @@ TEST(HaAction, TapActionsByDomain) {
     const char* domain;
     const char* service;
   } cases[] = {
-      {"light.a", "light", "toggle"},           {"switch.a", "switch", "toggle"},
-      {"fan.a", "fan", "toggle"},               {"input_boolean.a", "input_boolean", "toggle"},
-      {"media_player.a", "media_player", "toggle"}, {"remote.a", "remote", "toggle"},
-      {"scene.a", "scene", "turn_on"},          {"script.a", "script", "turn_on"},
+      {"light.a", "light", "toggle"},
+      {"switch.a", "switch", "toggle"},
+      {"fan.a", "fan", "toggle"},
+      {"input_boolean.a", "input_boolean", "toggle"},
+      {"media_player.a", "media_player", "toggle"},
+      {"remote.a", "remote", "toggle"},
+      {"scene.a", "scene", "turn_on"},
+      {"script.a", "script", "turn_on"},
       {"button.a", "button", "press"},
   };
   for (const auto& c : cases) {
@@ -120,14 +138,28 @@ TEST(HaAction, BrightnessCall) {
 TEST(HaStates, RoundTrip) {
   ha::StateMap m;
   m["light.a"] = ha::EntityState{"on", "Lamp", "", 40, "", ""};
-  m["sensor.t"] = ha::EntityState{"80.06", "Outdoor", "\xC2\xB0" "F", -1, "", ""};
-  m["weather.home"] = ha::EntityState{"sunny", "", "\xC2\xB0" "F", -1, "Wed 70/55", ""};
+  m["sensor.t"] = ha::EntityState{"80.06",
+                                  "Outdoor",
+                                  "\xC2\xB0"
+                                  "F",
+                                  -1,
+                                  "",
+                                  ""};
+  m["weather.home"] = ha::EntityState{"sunny",
+                                      "",
+                                      "\xC2\xB0"
+                                      "F",
+                                      -1,
+                                      "Wed 70/55",
+                                      ""};
   ha::StateMap back;
   ASSERT_TRUE(ha::parseStates(ha::serializeStates(m), back));
   ASSERT_EQ(back.size(), 3u);
   EXPECT_EQ(back["light.a"].brightnessPct, 40);
   EXPECT_EQ(back["light.a"].name, "Lamp");
-  EXPECT_EQ(back["sensor.t"].unit, "\xC2\xB0" "F");
+  EXPECT_EQ(back["sensor.t"].unit,
+            "\xC2\xB0"
+            "F");
   EXPECT_EQ(back["weather.home"].forecast, "Wed 70/55");
   EXPECT_FALSE(ha::parseStates("garbage", back));
 }
