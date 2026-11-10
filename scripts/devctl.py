@@ -116,8 +116,12 @@ class HttpClient(Client):
         name = Path(device_path).name
         body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\n"
                 f"Content-Type: application/octet-stream\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
-        code, _, resp = self.request("POST", "/dev/fs/upload", query={"path": device_path}, body=body,
-                                     content_type=f"multipart/form-data; boundary={boundary}")
+        old, self.timeout = self.timeout, max(self.timeout, 300)  # MBs over Wi-Fi outlast the default
+        try:
+            code, _, resp = self.request("POST", "/dev/fs/upload", query={"path": device_path}, body=body,
+                                         content_type=f"multipart/form-data; boundary={boundary}")
+        finally:
+            self.timeout = old
         if code >= 400:
             raise ApiError(f"upload: HTTP {code} {resp!r}")
 

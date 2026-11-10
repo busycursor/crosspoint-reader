@@ -10,6 +10,7 @@
 #include <Logging.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -24,6 +25,7 @@
 #include "components/icons/bookmark.h"
 #include "components/icons/cover.h"
 #include "components/icons/headerIcons.h"
+#include "dev/DevApi.h"
 #include "fontIds.h"
 
 void BaseTheme::setCheckboxRow(freeink::ui::ListItem& item, const bool checked) {
@@ -130,6 +132,95 @@ void BaseTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bo
   const Rect iconRect{rect.x, y, rect.width, rect.height};
   drawBatteryOutline(renderer, rect.x, y, rect.width, rect.height);
   fillBatteryIcon(renderer, iconRect, percentage);
+}
+
+// Height of the digits' ink in SMALL_FONT_ID, the reference size for the
+// status-row badge. Odd, so the circle and the A have a centre column.
+int BaseTheme::apiBadgeSize(const GfxRenderer& renderer) {
+  int size = 13;
+  const auto fontIt = renderer.getFontMap().find(SMALL_FONT_ID);
+  if (fontIt != renderer.getFontMap().end()) {
+    if (const auto glyph = fontIt->second.getGlyph('0', EpdFontFamily::REGULAR)) size = glyph->height;
+  }
+  if (size % 2 == 0) ++size;
+  return std::max(size, 9);
+}
+
+// An A in an open circle, drawn pixel by pixel in a size x size box at (x, y).
+void BaseTheme::drawApiBadge(const GfxRenderer& renderer, const int x, const int y, int size) {
+  if (size % 2 == 0) ++size;
+  const int r = (size - 1) / 2;
+  const int cx = x + r;
+  const int cy = y + r;
+  renderer.fillRect(x - 1, y - 1, size + 2, size + 2, false);
+
+  // Midpoint circle: one pixel wide, all eight octants.
+  int dx = r, dy = 0, err = 1 - r;
+  while (dx >= dy) {
+    const int pts[8][2] = {{dx, dy}, {dy, dx}, {-dy, dx}, {-dx, dy}, {-dx, -dy}, {-dy, -dx}, {dy, -dx}, {dx, -dy}};
+    for (const auto& p : pts) renderer.drawPixel(cx + p[0], cy + p[1], true);
+    ++dy;
+    if (err < 0) {
+      err += 2 * dy + 1;
+    } else {
+      --dx;
+      err += 2 * (dy - dx) + 1;
+    }
+  }
+
+  // The A: apex just under the top of the ring, feet just above the bottom,
+  // spread to fit the ring's width at the foot row.
+  const int top = y + 2;
+  const int foot = y + size - 3;
+  const int footOffset = foot - cy;
+  const int ringHalfWidth = static_cast<int>(std::sqrt(static_cast<float>(r * r - footOffset * footOffset)));
+  const int spread = std::max(2, ringHalfWidth - 1);
+  renderer.drawLine(cx, top, cx - spread, foot, true);
+  renderer.drawLine(cx, top, cx + spread, foot, true);
+  const int bar = top + (foot - top) * 3 / 5;
+  const int barHalf = spread * (bar - top) / std::max(1, foot - top);
+  renderer.drawLine(cx - barHalf, bar, cx + barHalf, bar, true);
+}
+
+// Places the badge left of the header's battery cluster. The cluster's ink is
+// measured from the finished frame, so label fonts and widths do not matter:
+// scan the status strip from the right edge for the battery and percent text,
+// stopping at the first wide blank run after them.
+void BaseTheme::drawApiBadgeInHeader(const GfxRenderer& renderer) {
+  const ThemeMetrics& metrics = UITheme::getInstance().getMetrics();
+  const int width = renderer.getScreenWidth();
+  // The label's digits can hang below the strip; scan one digit height further.
+  const int stripH = std::max(metrics.batteryBarHeight, 16) + apiBadgeSize(renderer);
+  const bool batteryLeft = metrics.headerBatterySide == 1;
+  constexpr int blankRun = 10;  // wider than any gap inside "97%" + glyph
+  constexpr int gap = 8;
+
+  int edge = -1, inkTop = stripH, inkBottom = -1, blanks = 0;
+  for (int i = 0; i < width / 2; ++i) {
+    const int col = batteryLeft ? i : width - 1 - i;
+    bool ink = false;
+    for (int row = 0; row < stripH; ++row) {
+      if (renderer.isInkAt(col, row)) {
+        ink = true;
+        inkTop = std::min(inkTop, row);
+        inkBottom = std::max(inkBottom, row);
+      }
+    }
+    if (ink) {
+      edge = col;
+      blanks = 0;
+    } else if (edge >= 0 && ++blanks >= blankRun) {
+      break;
+    }
+  }
+  if (edge < 0) return;  // no battery drawn on this frame
+
+  int size = inkBottom - inkTop + 1;
+  if (size % 2 == 0) ++size;
+  size = std::max(size, 9);
+  const int x = batteryLeft ? edge + gap : edge - gap - size;
+  const int y = (inkTop + inkBottom) / 2 - size / 2;
+  drawApiBadge(renderer, x, std::max(0, y), size);
 }
 
 void BaseTheme::drawCoverPlaceholder(const GfxRenderer& renderer, Rect rect) {
@@ -898,6 +989,22 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
 
   // Draw Battery
   const bool showBatteryPercentage = sb.showBatteryPercent;
+
+  if (dev_api::indicatorActive()) {
+    // Level with the digits' ink, as drawBatteryLeft() places its icon.
+    constexpr int gap = 6;
+    const int size = apiBadgeSize(renderer);
+    int inkTop = textY + 6;
+    const auto fontIt = renderer.getFontMap().find(SMALL_FONT_ID);
+    if (fontIt != renderer.getFontMap().end()) {
+      if (const auto glyph = fontIt->second.getGlyph('0', EpdFontFamily::REGULAR)) {
+        inkTop = textY + renderer.getFontAscenderSize(SMALL_FONT_ID) - static_cast<int>(glyph->top) +
+                 (static_cast<int>(glyph->height) - size) / 2;
+      }
+    }
+    drawApiBadge(renderer, leftClusterX + leftClusterWidth, inkTop, size);
+    leftClusterWidth += size + gap;
+  }
 
   if (sb.showBattery) {
     GUI.drawBatteryLeft(renderer,

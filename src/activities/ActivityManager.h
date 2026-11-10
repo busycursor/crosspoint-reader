@@ -93,6 +93,10 @@ class ActivityManager {
   void goToLibrary();
   void goToBrowser();
   void goToShelfSync();
+#ifdef CROSSPOINT_DEV_API
+  // Runs the KOReader sync in the open book; false when no EPUB reader is in front.
+  bool devRunReaderSync();
+#endif
   // Name of the foreground activity (e.g. "Home"); empty before boot finishes.
   std::string currentActivityName() const;
   void goToPlugins(bool showOpds);

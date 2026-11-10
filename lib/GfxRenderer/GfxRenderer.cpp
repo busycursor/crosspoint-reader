@@ -659,6 +659,14 @@ void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
   }
 }
 
+bool GfxRenderer::isInkAt(const int x, const int y) const {
+  if (!frameBuffer) return false;
+  int phyX = 0, phyY = 0;
+  rotateCoordinates(orientation, x, y, &phyX, &phyY, panelWidth, panelHeight);
+  if (phyX < 0 || phyY < 0 || phyX >= panelWidth || phyY >= panelHeight) return false;
+  return (frameBuffer[static_cast<uint32_t>(phyY) * panelWidthBytes + phyX / 8] & (1 << (7 - phyX % 8))) == 0;
+}
+
 int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontFamily::Style style,
                               const BidiUtils::BidiBaseDir baseDir) const {
   if (text == nullptr || *text == '\0') {
@@ -1778,13 +1786,19 @@ void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   refreshMode = applyPromotedRefresh(refreshMode);
-  if (gfxScreenTap) gfxScreenTap->onDisplay();
+  if (gfxScreenTap) {
+    gfxScreenTap->onDisplay();
+    if (gfxScreenTap->decorate) gfxScreenTap->decorate();
+  }
   display.displayBuffer(refreshMode, fadingFix);
 }
 
 void GfxRenderer::displayBufferAsync(HalDisplay::RefreshMode refreshMode) const {
   refreshMode = applyPromotedRefresh(refreshMode);
-  if (gfxScreenTap) gfxScreenTap->onDisplay();
+  if (gfxScreenTap) {
+    gfxScreenTap->onDisplay();
+    if (gfxScreenTap->decorate) gfxScreenTap->decorate();
+  }
   // The async path has no turn-off-screen hook, which the sunlight fading fix
   // relies on; keep those users on the blocking path.
   if (fadingFix) {

@@ -22,6 +22,10 @@ void loop();
 void applyPending();
 // True while a host tool has been active recently; holds off auto-sleep.
 bool keepAwake();
+// True while a host tool is changing things (any non-read request, or an
+// operation one started), and for a few seconds after. Drives the on-screen
+// "API active" badge so the user knows not to use the device meanwhile.
+bool indicatorActive();
 
 #else
 
@@ -29,6 +33,7 @@ inline void begin(void (*)()) {}
 inline void loop() {}
 inline void applyPending() {}
 inline bool keepAwake() { return false; }
+inline bool indicatorActive() { return false; }
 
 #endif
 

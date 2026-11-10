@@ -39,6 +39,7 @@ struct GfxScreenTap {
   void (*onClear)();
   void (*onText)(int x, int y, const char* text);
   void (*onDisplay)();
+  void (*decorate)();  // draws into a finished black-and-white frame just before it is shown
 };
 extern const GfxScreenTap* gfxScreenTap;
 
@@ -314,6 +315,8 @@ class GfxRenderer {
     clipBottom_ = y + height;
   }
   void drawPixel(int x, int y, bool state = true) const;
+  // True when the black-and-white frame has ink at logical (x, y); false off-screen.
+  bool isInkAt(int x, int y) const;
   // Draw glyph ink with clipping and orientation resolved once per glyph.
   void drawGlyphBitmap(const uint8_t* bitmap, int width, int height, const glyphBitmap::Frame& frame, bool twoBit,
                        RenderMode mode, bool state) const;

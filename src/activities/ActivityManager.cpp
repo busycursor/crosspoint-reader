@@ -27,6 +27,7 @@
 #include "network/ShelfSyncActivity.h"
 #include "network/UsbDriveActivity.h"
 #include "plugins/PluginCatalogActivity.h"
+#include "reader/EpubReaderActivity.h"
 #include "reader/ReaderActivity.h"
 #include "reader/RemoteTurnGate.h"
 #include "settings/OpdsServerListActivity.h"
@@ -314,6 +315,15 @@ void ActivityManager::goToLibrary() {
 std::string ActivityManager::currentActivityName() const {
   return currentActivity ? currentActivity->name : std::string();
 }
+
+#ifdef CROSSPOINT_DEV_API
+bool ActivityManager::devRunReaderSync() {
+  // The name identifies the concrete type (RTTI is off in firmware builds).
+  if (!currentActivity || currentActivity->name != "EpubReader") return false;
+  static_cast<EpubReaderActivity*>(currentActivity.get())->devRunSync();
+  return true;
+}
+#endif
 
 void ActivityManager::goToShelfSync() {
   const auto& servers = OPDS_STORE.getServers();

@@ -13,12 +13,14 @@
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <I18n.h>
+#include <LibraryBuilder.h>
 #include <Logging.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -37,6 +39,7 @@
 #include "WifiCredentialStore.h"
 #include "activities/ActivityManager.h"
 #include "activities/RenderLock.h"
+#include "components/themes/BaseTheme.h"
 #include "util/DictionaryRegistry.h"
 
 #ifdef SIMULATOR
@@ -64,6 +67,15 @@ constexpr const char* kUploadPath = "/dev/fs/upload";
 
 void (*sleepFn)() = nullptr;
 unsigned long lastRequestMs = 0;
+
+// "API active" badge state. A changing request or a command it queued keeps
+// the badge up; operationRunning covers work that blocks the main loop (a
+// sync), and kBadgeHoldMs keeps it visible briefly after the last change.
+constexpr unsigned long kBadgeHoldMs = 5000;
+unsigned long lastChangeMs = 0;
+bool operationRunning = false;
+bool badgeShown = false;
+std::atomic<bool> headerBadgeAllowed{false};  // read by the render task
 
 // ---------------------------------------------------------------------------
 // Request/response model shared by the HTTP and serial transports.
@@ -150,7 +162,10 @@ void onDisplay() {
   if (!screenBuilding.empty()) screenShown = screenBuilding;
   ++screenSeq;
 }
-const GfxScreenTap kScreenTap{onClear, onText, onDisplay};
+void decorateFrame() {
+  if (headerBadgeAllowed.load() && indicatorActive()) BaseTheme::drawApiBadgeInHeader(renderer);
+}
+const GfxScreenTap kScreenTap{onClear, onText, onDisplay, decorateFrame};
 
 // ---------------------------------------------------------------------------
 // Commands that must run from loop(), not inside a request.
@@ -545,11 +560,13 @@ void deleteFs(const Request& req, Response& res) {
   const bool dir = f.isDirectory();
   f.close();
   const bool ok = dir ? Storage.removeDir(path.c_str()) : Storage.remove(path.c_str());
+  if (ok) library::markLibraryIndexDirty();  // the Library caches what is on the card
   ok ? res.message(200, "deleted") : res.message(500, "delete failed");
 }
 
 // The transport has already streamed the body into the file.
 void postFsUpload(const Request& req, Response& res) {
+  if (req.uploadOk) library::markLibraryIndexDirty();
   req.uploadOk ? res.message(200, "uploaded") : res.message(500, "upload failed");
 }
 
@@ -616,6 +633,7 @@ const Route kRoutes[] = {
 
 void dispatch(const Request& req, Response& res) {
   lastRequestMs = millis();
+  if (req.method != "GET") lastChangeMs = lastRequestMs | 1;
   for (const auto& r : kRoutes) {
     if (req.path == r.path && req.method == r.method) {
       r.handler(req, res);
@@ -1002,7 +1020,25 @@ void begin(void (*enterSleep)()) {
   if (CROSSPOINT_DEV_API_TOKEN[0] == '\0') LOG_ERR("DEV", "Dev API built without a token; HTTP requests refused");
 }
 
+// Show or clear the badge when its state changes. Readers draw it in their
+// status bar; other screens get it beside the header battery at display time.
+void updateBadge() {
+  if (operationRunning) {  // the main loop is back: whatever it ran has finished
+    operationRunning = false;
+    lastChangeMs = millis() | 1;
+  }
+  const std::string name = activityManager.currentActivityName();
+  headerBadgeAllowed.store(name.find("Reader") == std::string::npos && name != "Sleep" && name != "Boot" &&
+                           !name.empty());
+  const bool active = indicatorActive();
+  if (active != badgeShown) {
+    badgeShown = active;
+    activityManager.requestUpdate();
+  }
+}
+
 void loop() {
+  updateBadge();
   pollSerial();
   keepWifiUp();
   if (!serverStarted) {
@@ -1015,6 +1051,10 @@ void loop() {
 void applyPending() {
   const Pending cmd = pending;
   pending = {};
+  if (cmd.kind != PendingKind::None) {
+    operationRunning = true;
+    lastChangeMs = millis() | 1;
+  }
   switch (cmd.kind) {
     case PendingKind::None:
       return;
@@ -1061,11 +1101,15 @@ void applyPending() {
     activityManager.goToBrowser();
   else if (s == "reader" && !cmd.path.empty())
     activityManager.goToReader(cmd.path);
-  else
+  else if (s == "kosync") {
+    if (!activityManager.devRunReaderSync()) LOG_ERR("DEV", "kosync: no book open");
+  } else
     LOG_ERR("DEV", "Unknown screen: %s", s.c_str());
 }
 
 bool keepAwake() { return lastRequestMs != 0 && millis() - lastRequestMs < kKeepAwakeMs; }
+
+bool indicatorActive() { return operationRunning || (lastChangeMs != 0 && millis() - lastChangeMs < kBadgeHoldMs); }
 
 }  // namespace dev_api
 
