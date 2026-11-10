@@ -97,25 +97,53 @@ int ha::restRequest(const char* method, const std::string& path, const std::stri
 
 namespace {
 
+// The entity's current state; Ok with "unavailable" for an entity HA does not know.
+ha::LinkStatus readState(const std::string& id, std::string& entityId, ha::EntityState& out) {
+  std::string json;
+  const int code = ha::restRequest("GET", "/api/states/" + id, "", &json);
+  if (code == 200 && ha::parseStateObject(json, entityId, out)) return ha::LinkStatus::Ok;
+  if (code == 404) {
+    entityId = id;
+    out = ha::EntityState{"unavailable", "", "", -1, "", ""};
+    return ha::LinkStatus::Ok;
+  }
+  return code == 200 ? ha::LinkStatus::NoAnswer : ha::statusFromHttp(code);
+}
+
+// A device often reports its new state to HA a moment after the service call
+// returns; read until the state moves (up to kSettleReads), so the screen shows
+// the result instead of the state from before the tap.
+constexpr int kSettleReads = 4;
+constexpr unsigned long kSettleGapMs = 500;
+
 ha::LinkStatus runCall(const ha::ServiceCall& call, std::string& entityId, ha::EntityState& fresh) {
   if (!haLink.ensureHomeNetwork()) return ha::LinkStatus::NoNetwork;
 #ifndef SIMULATOR
   WifiPowerSaveGuard powerSave;
 #endif
+  // Scenes, scripts and buttons have no state to wait for.
+  const bool waitForChange = ha::isToggleable(call.entityId);
+  ha::EntityState before;
+  if (waitForChange) {
+    std::string id;
+    const ha::LinkStatus s = readState(call.entityId, id, before);
+    if (s != ha::LinkStatus::Ok) return s;
+  }
   const int code =
       ha::restRequest("POST", "/api/services/" + call.domain + "/" + call.service, ha::serviceBody(call), nullptr);
   const ha::LinkStatus status = ha::statusFromHttp(code);
   LOG_INF("HA", "HA call %s.%s %s -> %d", call.domain.c_str(), call.service.c_str(), call.entityId.c_str(), code);
   if (status != ha::LinkStatus::Ok) return status;
-  std::string json;
-  const int getCode = ha::restRequest("GET", "/api/states/" + call.entityId, "", &json);
-  if (getCode == 200 && ha::parseStateObject(json, entityId, fresh)) return ha::LinkStatus::Ok;
-  if (getCode == 404) {
-    entityId = call.entityId;
-    fresh = ha::EntityState{"unavailable", "", "", -1, "", ""};
-    return ha::LinkStatus::Ok;
+  for (int read = 0;; ++read) {
+    const ha::LinkStatus s = readState(call.entityId, entityId, fresh);
+    if (s != ha::LinkStatus::Ok) return s;
+    const bool moved = fresh.state != before.state || fresh.brightnessPct != before.brightnessPct;
+    if (!waitForChange || moved || read + 1 >= kSettleReads) {
+      if (waitForChange && !moved) LOG_INF("HA", "HA: %s did not change yet", call.entityId.c_str());
+      return ha::LinkStatus::Ok;
+    }
+    delay(kSettleGapMs);
   }
-  return ha::statusFromHttp(getCode);
 }
 
 struct Job {

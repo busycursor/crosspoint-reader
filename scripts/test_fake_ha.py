@@ -54,6 +54,14 @@ class FakeHaTest(unittest.TestCase):
         self.request("POST", "/api/states/sensor.timer_remaining", {"state": "0:10:00"})
         self.assertEqual(self.request("GET", "/api/states/sensor.timer_remaining")[1]["state"], "0:10:00")
 
+    def test_lag_delays_the_change(self):
+        self.ha.lag = 0.3
+        self.request("POST", "/api/services/light/toggle", {"entity_id": "light.desk_lamp"})
+        self.assertEqual(self.request("GET", "/api/states/light.desk_lamp")[1]["state"], "off")
+        import time
+        time.sleep(0.5)
+        self.assertEqual(self.request("GET", "/api/states/light.desk_lamp")[1]["state"], "on")
+
     def test_wrong_token_is_401(self):
         self.assertEqual(self.request("GET", "/api/states/light.desk_lamp", token="nope")[0], 401)
 

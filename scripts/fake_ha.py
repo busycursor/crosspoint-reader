@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A small fake Home Assistant REST API for simulator tests.
 
-  python3 scripts/fake_ha.py --port 18123 --token TOKEN [--fixture scripts/ha_fixtures/home.json] [--down]
+  python3 scripts/fake_ha.py --port 18123 --token TOKEN [--fixture scripts/ha_fixtures/home.json] [--down] [--lag S]
 
 Serves GET /api/states, GET and POST (set) /api/states/<id>, POST /api/services/<domain>/<service>
 (toggle, turn_on/turn_off with brightness_pct, scene/script turn_on, button press),
@@ -25,9 +25,10 @@ DEFAULT_FIXTURE = Path(__file__).resolve().parent / "ha_fixtures" / "home.json"
 
 
 class FakeHa:
-    def __init__(self, fixture: dict, token: str, down: bool = False):
+    def __init__(self, fixture: dict, token: str, down: bool = False, lag: float = 0.0):
         self.token = token
         self.down = down
+        self.lag = lag  # seconds before a service call's state change lands, like a slow device
         self.lock = threading.Lock()
         self.states = {s["entity_id"]: copy.deepcopy(s) for s in fixture.get("states", [])}
         self.forecast = fixture.get("forecast", [])
@@ -35,6 +36,15 @@ class FakeHa:
         self.calls: list[tuple[str, str, dict]] = []
 
     def call_service(self, domain: str, service: str, data: dict) -> bool:
+        if self.lag > 0:
+            with self.lock:
+                known = data.get("entity_id", "") in self.states
+            if known:
+                threading.Timer(self.lag, self._apply, (domain, service, data)).start()
+            return known
+        return self._apply(domain, service, data)
+
+    def _apply(self, domain: str, service: str, data: dict) -> bool:
         entity = data.get("entity_id", "")
         with self.lock:
             self.calls.append((domain, service, data))
@@ -143,8 +153,9 @@ def main() -> None:
     ap.add_argument("--token", required=True)
     ap.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     ap.add_argument("--down", action="store_true")
+    ap.add_argument("--lag", type=float, default=0.0, help="seconds before a service call's state change lands")
     args = ap.parse_args()
-    ha = FakeHa(json.loads(args.fixture.read_text()), args.token, args.down)
+    ha = FakeHa(json.loads(args.fixture.read_text()), args.token, args.down, args.lag)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(ha))
     print(f"fake HA on http://127.0.0.1:{args.port}", flush=True)
     server.serve_forever()

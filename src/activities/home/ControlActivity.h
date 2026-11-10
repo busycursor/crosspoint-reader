@@ -31,13 +31,15 @@ class ControlActivity final : public Activity, private UiAppHost {
   int page = 0;
 
   std::string pendingEntity;  // a tap in flight: drawn as working
+  std::string recentEntity;   // the last control used; its live updates repaint at once
+  unsigned long recentUntilMs = 0;
   ha::ServiceCall queued;
   bool hasQueued = false;
   int dragCard = -1;  // index into items of the slider being dragged
   uint8_t dragLevel = 0;
   bool draggingSlider = false;
   ha::LinkStatus shownStatus = ha::LinkStatus::Working;
-  bool repaintDue = false;     // session changes waiting for the rate limit
+  bool repaintDue = false;  // session changes waiting for the rate limit
   unsigned long lastPaintMs = 0;
 
   freeink::ui::SliderRowProps rowProps;

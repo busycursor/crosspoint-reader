@@ -26,6 +26,7 @@ namespace {
 constexpr const char* kLayoutCachePath = "/.crosspoint/homeassistant-layout.json";
 constexpr size_t kMaxLayoutBytes = 64 * 1024;
 constexpr unsigned long kRepaintMinMs = 5000;  // live updates batch at most this often
+constexpr unsigned long kRecentTapMs = 10000;  // a tapped entity's updates skip the batching this long
 constexpr int16_t kCardHeight = 56;
 constexpr int16_t kSliderHeight = 56;
 constexpr int HA_BRIGHTNESS_STEP = 10;
@@ -127,10 +128,9 @@ void ControlActivity::screenBuilder(UiScreen& screen, void* user) {
 void ControlActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto& theme = screen.theme();
-  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight),
-                                                static_cast<int16_t>(metrics.contentSidePadding),
-                                                static_cast<int16_t>(metrics.buttonHintsHeight),
-                                                static_cast<int16_t>(metrics.contentSidePadding)});
+  screen.setContentMarginFromScreen(fui::Insets{
+      static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), static_cast<int16_t>(metrics.contentSidePadding),
+      static_cast<int16_t>(metrics.buttonHintsHeight), static_cast<int16_t>(metrics.contentSidePadding)});
   const int16_t line = screen.target().lineHeight(theme.smallText.font);
 
   // Why the cards may be stale, or nothing when they are live.
@@ -162,7 +162,8 @@ void ControlActivity::buildScreen(UiScreen& screen) {
   if (pageStarts.empty()) paginate(static_cast<int16_t>(screen.contentRect().height - pageLine));
 
   const int first = pageStarts[page];
-  const int last = page + 1 < static_cast<int>(pageStarts.size()) ? pageStarts[page + 1] : static_cast<int>(items.size());
+  const int last =
+      page + 1 < static_cast<int>(pageStarts.size()) ? pageStarts[page + 1] : static_cast<int>(items.size());
   int sliders = 0;
   for (int i = first; i < last; ++i) {
     const Item& item = items[i];
@@ -211,19 +212,21 @@ void ControlActivity::drawCard(UiScreen& screen, const ha::Card& card, const int
     screen.target().stroke(box, ink, 2, theme.controlRadius);
     fui::TextStyle body = theme.smallText;
     body.bold = true;
-    screen.target().text(fui::Rect{static_cast<int16_t>(box.x + theme.spaceMd), static_cast<int16_t>(box.y + theme.spaceSm),
-                                   static_cast<int16_t>(box.width - 2 * theme.spaceMd), line},
-                         value.empty() ? name.c_str() : value.c_str(), body);
-    screen.target().text(fui::Rect{static_cast<int16_t>(box.x + theme.spaceMd),
-                                   static_cast<int16_t>(box.y + 2 * theme.spaceSm + line),
-                                   static_cast<int16_t>(box.width - 2 * theme.spaceMd), line},
-                         s.forecast.c_str(), theme.smallText);
+    screen.target().text(
+        fui::Rect{static_cast<int16_t>(box.x + theme.spaceMd), static_cast<int16_t>(box.y + theme.spaceSm),
+                  static_cast<int16_t>(box.width - 2 * theme.spaceMd), line},
+        value.empty() ? name.c_str() : value.c_str(), body);
+    screen.target().text(
+        fui::Rect{static_cast<int16_t>(box.x + theme.spaceMd), static_cast<int16_t>(box.y + 2 * theme.spaceSm + line),
+                  static_cast<int16_t>(box.width - 2 * theme.spaceMd), line},
+        s.forecast.c_str(), theme.smallText);
     return;
   }
 
   if (card.slider) {
     const bool on = s.state == "on";
-    const uint8_t level = dragCard == itemIndex ? dragLevel : static_cast<uint8_t>(on && s.brightnessPct > 0 ? s.brightnessPct : 0);
+    const uint8_t level =
+        dragCard == itemIndex ? dragLevel : static_cast<uint8_t>(on && s.brightnessPct > 0 ? s.brightnessPct : 0);
     char pct[16];
     if (pending) {
       snprintf(pct, sizeof(pct), "...");
@@ -274,7 +277,8 @@ void ControlActivity::drawCard(UiScreen& screen, const ha::Card& card, const int
   fui::TextStyle val = label;
   val.align = fui::TextAlign::Right;
   label.bold = true;
-  const fui::Rect text{static_cast<int16_t>(box.x + theme.spaceMd), static_cast<int16_t>(box.y + (box.height - line) / 2),
+  const fui::Rect text{static_cast<int16_t>(box.x + theme.spaceMd),
+                       static_cast<int16_t>(box.y + (box.height - line) / 2),
                        static_cast<int16_t>(box.width - 2 * theme.spaceMd), line};
   screen.target().text(fui::Rect{text.x, text.y, static_cast<int16_t>(text.width * 2 / 3), text.height}, name.c_str(),
                        label);
@@ -306,7 +310,7 @@ void ControlActivity::onSliderEvent(const fui::ActionEvent& event, void* user) {
   const int wanted = event.action - ACTION_SLIDER_BASE;
   int sliderIndex = 0;
   const int last = self->page + 1 < static_cast<int>(self->pageStarts.size()) ? self->pageStarts[self->page + 1]
-                                                                                : static_cast<int>(self->items.size());
+                                                                              : static_cast<int>(self->items.size());
   for (int i = self->pageStarts[self->page]; i < last; ++i) {
     const ha::Card* c = self->cardAt(i);
     if (!c || !c->slider) continue;
@@ -319,6 +323,8 @@ void ControlActivity::onSliderEvent(const fui::ActionEvent& event, void* user) {
 }
 
 void ControlActivity::send(const ha::ServiceCall& call) {
+  recentEntity = call.entityId;
+  recentUntilMs = millis() + kRecentTapMs;
   if (haLink.submit(call)) {
     pendingEntity = call.entityId;
     hasQueued = false;
@@ -349,8 +355,17 @@ void ControlActivity::pollSession() {
       setLayout(update.layoutJson, true);
       repaintDue = true;
     }
+    bool tapped = false;
     for (const auto& [id, state] : update.changes) {
-      if (ha::updateCachedState(id, state)) repaintDue = true;
+      if (!ha::updateCachedState(id, state)) continue;
+      repaintDue = true;
+      // The control just used: show its update now, not at the next batch.
+      if (id == recentEntity && static_cast<long>(recentUntilMs - millis()) > 0) tapped = true;
+    }
+    if (tapped && pendingEntity.empty()) {
+      repaintDue = false;
+      lastPaintMs = millis();
+      requestUpdate();
     }
   }
   const ha::LinkStatus status = session->status();
@@ -377,7 +392,8 @@ void ControlActivity::loop() {
       return;
     }
     const auto swipe = mappedInput.wasSwipe();
-    if (!draggingSlider && swipe == MappedInputManager::SwipeDir::Up && page + 1 < static_cast<int>(pageStarts.size())) {
+    if (!draggingSlider && swipe == MappedInputManager::SwipeDir::Up &&
+        page + 1 < static_cast<int>(pageStarts.size())) {
       ++page;
       requestUpdate();
       return;
