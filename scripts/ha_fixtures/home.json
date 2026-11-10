@@ -1,0 +1,42 @@
+{
+  "states": [
+    {"entity_id": "light.reading_lamp", "state": "on", "attributes": {"friendly_name": "Reading lamp", "brightness": 128}},
+    {"entity_id": "light.desk_lamp", "state": "off", "attributes": {"friendly_name": "Desk lamp"}},
+    {"entity_id": "scene.evening", "state": "unknown", "attributes": {"friendly_name": "Evening"}},
+    {"entity_id": "switch.fan", "state": "off", "attributes": {"friendly_name": "Fan"}},
+    {"entity_id": "weather.home", "state": "partlycloudy", "attributes": {"friendly_name": "Home", "temperature": 71.6, "temperature_unit": "°F"}},
+    {"entity_id": "sensor.outdoor_temperature", "state": "68.4", "attributes": {"friendly_name": "Outdoor temperature", "unit_of_measurement": "°F"}},
+    {"entity_id": "sensor.timer_remaining", "state": "0:42:00", "attributes": {"friendly_name": "Timer remaining"}}
+  ],
+  "forecast": [
+    {"datetime": "2026-11-11T08:00:00+00:00", "temperature": 70.2, "templow": 55.1, "condition": "sunny"},
+    {"datetime": "2026-11-12T08:00:00+00:00", "temperature": 68, "templow": 52, "condition": "rainy"},
+    {"datetime": "2026-11-13T08:00:00+00:00", "temperature": 64, "templow": 50, "condition": "cloudy"}
+  ],
+  "dashboard": {
+    "title": "E-reader",
+    "views": [{
+      "title": "Home",
+      "type": "sections",
+      "sections": [
+        {"type": "grid", "cards": [
+          {"type": "heading", "heading": "Outside"},
+          {"type": "weather-forecast", "entity": "weather.home"},
+          {"type": "tile", "entity": "sensor.outdoor_temperature"}
+        ]},
+        {"type": "grid", "cards": [
+          {"type": "heading", "heading": "Laundry"},
+          {"type": "entities", "entities": ["sensor.timer_remaining"]}
+        ]},
+        {"type": "grid", "cards": [
+          {"type": "heading", "heading": "Lights"},
+          {"type": "tile", "entity": "light.reading_lamp", "features": [{"type": "light-brightness"}]},
+          {"type": "tile", "entity": "light.desk_lamp"},
+          {"type": "button", "entity": "scene.evening"},
+          {"type": "entity", "entity": "switch.fan"},
+          {"type": "custom:mushroom-template-card", "entity": "light.desk_lamp"}
+        ]}
+      ]
+    }]
+  }
+}
