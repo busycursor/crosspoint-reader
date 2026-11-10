@@ -1,5 +1,7 @@
 add_executable(HomeAssistantTest
   HaConfigTest.cpp
+  HaDashboardTest.cpp
+  ${REPO_ROOT}/lib/HomeAssistant/HaDashboard.cpp
   ${REPO_ROOT}/lib/HomeAssistant/HaConfig.cpp
 )
 
