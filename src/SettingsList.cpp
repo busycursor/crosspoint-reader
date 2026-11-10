@@ -353,6 +353,8 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   // ClockSettingsActivity under System settings).
   emit(SettingInfo::StaticEnum(StrId::STR_CLOCK, &CrossPointSettings::statusBarClock, STATUS_BAR_CLOCK_VALUES,
                                "statusBarClock", StrId::STR_CUSTOMISE_STATUS_BAR));
+  // Category-less: persisted, flipped by a tap on the bottom of the page.
+  emit(SettingInfo::Toggle(StrId::STR_HIDE_STATUS_BAR, &CrossPointSettings::statusBarHidden, "statusBarHidden"));
   // LEGACY: retired quarter-hour UTC offset (biased by 48). Persisted so
   // timezones::activeIndex() can migrate it into clockTimezone.
   emit(SettingInfo::Value(StrId::STR_CLOCK, &CrossPointSettings::clockUtcOffsetQ, {0, 104, 1}, "clockUtcOffsetQ",

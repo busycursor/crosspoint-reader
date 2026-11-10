@@ -208,6 +208,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void openClippings();
   void applyProgressChange(const ProgressChangeResult& progress);
   bool launchKOReaderSync();
+  void toggleStatusBar();
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void loadCachedBookmarks();
@@ -251,12 +252,14 @@ class EpubReaderActivity final : public ReaderActivity {
 
 #ifdef CROSSPOINT_DEV_API
   bool devSyncRequested = false;
+  int devJumpPercent = -1;
 #endif
  public:
 #ifdef CROSSPOINT_DEV_API
   // Dev API: run the KOReader sync for the open book on the next loop(), the
   // place the reader's own sync triggers run it.
   void devRunSync() { devSyncRequested = true; }
+  void devJumpToPercent(int percent) { devJumpPercent = percent; }
 #endif
   explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath,
                               bool allowFastInitialRefresh)

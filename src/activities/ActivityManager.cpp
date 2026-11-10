@@ -323,6 +323,12 @@ bool ActivityManager::devRunReaderSync() {
   static_cast<EpubReaderActivity*>(currentActivity.get())->devRunSync();
   return true;
 }
+
+bool ActivityManager::devReaderJumpToPercent(const int percent) {
+  if (!currentActivity || currentActivity->name != "EpubReader") return false;
+  static_cast<EpubReaderActivity*>(currentActivity.get())->devJumpToPercent(percent);
+  return true;
+}
 #endif
 
 void ActivityManager::goToShelfSync() {

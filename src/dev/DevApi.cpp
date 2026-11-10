@@ -1165,7 +1165,9 @@ void applyPending() {
     activityManager.goToBrowser();
   else if (s == "reader" && !cmd.path.empty())
     activityManager.goToReader(cmd.path);
-  else if (s == "kosync") {
+  else if (s == "percent") {  // path = 0..100, in the open book
+    if (!activityManager.devReaderJumpToPercent(atoi(cmd.path.c_str()))) LOG_ERR("DEV", "percent: no book open");
+  } else if (s == "kosync") {
     if (!activityManager.devRunReaderSync()) LOG_ERR("DEV", "kosync: no book open");
   } else
     LOG_ERR("DEV", "Unknown screen: %s", s.c_str());

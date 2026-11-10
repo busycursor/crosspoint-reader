@@ -681,6 +681,12 @@ void EpubReaderActivity::loop() {
     launchKOReaderSync();
     return;
   }
+  if (devJumpPercent >= 0 && epub) {
+    const int percent = devJumpPercent;
+    devJumpPercent = -1;
+    jumpToPercent(percent);
+    return;
+  }
 #endif
   if (loadFailurePopup.isActive()) {
     loadFailurePopup.handleInput(mappedInput, [this] { requestUpdate(); });
@@ -947,6 +953,18 @@ void EpubReaderActivity::loop() {
         return;
       default:
         break;
+    }
+  }
+
+  // A tap on the bottom tenth of the page shows or hides the status bar. It
+  // takes priority over links and page-turn taps in that strip.
+  if (!atEndOfBook && SETTINGS.touchReaderControls && mappedInput.hasTouch()) {
+    int touchX = 0;
+    int touchY = 0;
+    if (mappedInput.wasScreenTapped(touchX, touchY) && touchY >= renderer.getScreenHeight() * 9 / 10) {
+      haptic_feedback::touchAction();
+      toggleStatusBar();
+      return;
     }
   }
 
@@ -1422,6 +1440,25 @@ bool EpubReaderActivity::launchKOReaderSync() {
 void EpubReaderActivity::applyInitialOrientation() {
   ReaderActivity::applyInitialOrientation();
   appliedOrientation = SETTINGS.orientation;
+}
+
+// The status bar's height is part of the page layout, so showing or hiding it
+// relays out the chapter; the reader returns to the same place in the text.
+void EpubReaderActivity::toggleStatusBar() {
+  {
+    RenderLock lock(*this);
+    if (section) {
+      rememberCurrentContentOffset();
+      cachedSpineIndex = currentSpineIndex;
+      cachedChapterTotalPageCount = section->pageCount;
+      nextPageNumber = section->currentPage;
+    }
+    SETTINGS.statusBarHidden = SETTINGS.statusBarHidden ? 0 : 1;
+    section.reset();
+  }
+  SETTINGS.saveToFile();
+  LOG_INF("ERS", "Status bar %s", SETTINGS.statusBarHidden ? "hidden" : "shown");
+  requestUpdate();
 }
 
 void EpubReaderActivity::applyOrientation(const uint8_t orientation) {

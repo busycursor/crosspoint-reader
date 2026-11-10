@@ -994,7 +994,7 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   // Draw Battery
   const bool showBatteryPercentage = sb.showBatteryPercent;
 
-  if (dev_api::indicatorActive()) {
+  if (dev_api::indicatorActive() && showStatusBarTextLane) {
     // Level with the digits' ink, as drawBatteryLeft() places its icon.
     constexpr int gap = 6;
     const int size = apiBadgeSize(renderer);
