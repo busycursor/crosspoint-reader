@@ -1,5 +1,27 @@
 # CrossPoint Reader
 
+> **About this fork.** This is an unofficial fork of
+> [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader),
+> developed on an Xteink X4 Pro. It is shared as-is and is not maintained:
+> take whatever is useful. Changes live on the `main-custom` branch:
+>
+> - **Single-pass anti-aliasing (UC8279).** Anti-aliased text pages go out in
+>   one refresh, without the flash of the stock B/W-then-gray two-step
+>   (about 640 ms against 1.05 s on the X4 Pro). Settings > Reader > Refresh.
+>   The driver part is in the
+>   [FreeInk SDK fork](https://github.com/busycursor/freeink-sdk/tree/main-custom);
+>   see [scripts/waveforms/README.md](scripts/waveforms/README.md) for how it
+>   works and how to test other panels.
+> - **Shelf sync.** Home's library slot opens "Sync library", which mirrors a
+>   Calibre-Web shelf (an OPDS feed) to `/Calibre`.
+> - **Developer Mode** (Settings > Connectivity). A control API over Wi-Fi
+>   and USB serial for host tools (`scripts/devctl.py`, and an MCP server in
+>   `scripts/devctl_mcp.py`): screenshots, input, logs, settings, files and
+>   flashing over Wi-Fi.
+> - Smaller changes: a centered status bar clock, tap the bottom of the page
+>   to hide the status bar, the metadata cover when an EPUB's first page is
+>   blank, and KOReader sync fixes.
+
 [![Fund contributors](https://img.shields.io/badge/%F0%9F%91%91_Fund_contributors-royalty.dev-BB953A?style=for-the-badge&labelColor=1a1a1a)](https://app.royalty.dev/crosspoint-reader/crosspoint-reader)
 
 CrossPoint is open-source e-reader firmware - community-built, fully hackable, free forever. It's maintained by a growing community of developers and readers who believe your device should do what you want - not what a manufacturer decided for you.

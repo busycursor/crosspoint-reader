@@ -3,7 +3,7 @@
 
 Transports (same endpoints on both):
   default            simulator over HTTP (http://127.0.0.1:8090, token "sim")
-  --host IP          device over Wi-Fi (token from ../.devapi-token or $CROSSPOINT_DEV_API_TOKEN)
+  --host IP          device over Wi-Fi (token from .dev/api-token or $CROSSPOINT_DEV_API_TOKEN)
   --serial PORT      USB serial; PORT = auto (first /dev/cu.usbmodem*), sim (simulator pty) or a path
 
 Commands:
@@ -51,15 +51,15 @@ import zlib
 from pathlib import Path
 
 FIRMWARE = Path(__file__).resolve().parent.parent
-WORKSPACE = FIRMWARE.parent
 SIM_BINARY = FIRMWARE / ".pio/build/simulator_x4_pro/program"
-# Kept outside the firmware repo: the simulated SD card holds obfuscated
-# credentials and real book files, and screenshots show library contents.
-QA_DIR = WORKSPACE / "qa"
+# Local dev state, git-ignored: the simulated SD card holds credentials and
+# book files, and screenshots show library contents.
+DEV_DIR = FIRMWARE / ".dev"
+QA_DIR = DEV_DIR / "qa"
 SIM_DIR = QA_DIR / "sim"  # pidfile, log, pty link and the simulated SD card
 SIM_PTY = SIM_DIR / "serial"
 API_PORT = 8090
-TOKEN_FILE = WORKSPACE / ".devapi-token"
+TOKEN_FILE = DEV_DIR / "api-token"
 
 
 class ApiError(RuntimeError):
@@ -538,7 +538,7 @@ def main() -> None:
 
     s = sub.add_parser("sim")
     s.add_argument("action", choices=["start", "stop", "status"])
-    s.add_argument("--sd", help="folder to use as the SD card (default ../qa/sim/sd)")
+    s.add_argument("--sd", help="folder to use as the SD card (default .dev/qa/sim/sd)")
     s.add_argument("--window", action="store_true", help="show the SDL window")
     sub.add_parser("state")
     sub.add_parser("info")
