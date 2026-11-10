@@ -472,7 +472,7 @@ static void renderCharScaled(const GfxRenderer& renderer, GfxRenderer::RenderMod
                              const EpdFontFamily& fontFamily, const uint32_t cp, int cursorX, int cursorY,
                              const bool pixelState, const EpdFontFamily::Style style, const int scaleNum,
                              const int scaleDen) {
-  if (renderer.grayPlanesAreAbsolute()) renderMode = GfxRenderer::BW;
+  if (renderer.grayPlanesAreAbsolute() && !renderer.absoluteGlyphGray()) renderMode = GfxRenderer::BW;
   EpdGlyph solidFallback;
   const EpdGlyph* glyph = fontFamily.getGlyphMetrics(cp, solidFallback, style);
   if (!glyph) return;
@@ -532,7 +532,7 @@ template <TextRotation rotation = TextRotation::None>
 static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode renderMode,
                            const EpdFontFamily& fontFamily, const uint32_t cp, int cursorX, int cursorY,
                            const bool pixelState, const EpdFontFamily::Style style) {
-  if (renderer.grayPlanesAreAbsolute()) renderMode = GfxRenderer::BW;
+  if (renderer.grayPlanesAreAbsolute() && !renderer.absoluteGlyphGray()) renderMode = GfxRenderer::BW;
   EpdGlyph solidFallback;
   const EpdGlyph* glyph = fontFamily.getGlyphMetrics(cp, solidFallback, style);
   if (!glyph) {
@@ -614,9 +614,11 @@ void GfxRenderer::drawGlyphBitmap(const uint8_t* bitmap, const int width, const 
   physical.dyX = nextX - physical.x;
   physical.dyY = nextY - physical.y;
 
-  const glyphBitmap::Plane plane = mode == BW              ? glyphBitmap::Plane::BW
-                                   : mode == GRAYSCALE_MSB ? glyphBitmap::Plane::GrayMSB
-                                                           : glyphBitmap::Plane::GrayLSB;
+  const bool absolute = absoluteGrayPlanes && absoluteGlyphGray_;
+  const glyphBitmap::Plane plane = mode == BW ? glyphBitmap::Plane::BW
+                                   : mode == GRAYSCALE_MSB
+                                       ? (absolute ? glyphBitmap::Plane::AbsoluteMSB : glyphBitmap::Plane::GrayMSB)
+                                       : (absolute ? glyphBitmap::Plane::AbsoluteLSB : glyphBitmap::Plane::GrayLSB);
   glyphBitmap::draw(bitmap, width, height, twoBit, plane, state, target, clip);
 }
 
@@ -1787,18 +1789,22 @@ void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   refreshMode = applyPromotedRefresh(refreshMode);
   if (gfxScreenTap) {
+    if (gfxScreenTap->hold && gfxScreenTap->hold()) return;
     gfxScreenTap->onDisplay();
     if (gfxScreenTap->decorate) gfxScreenTap->decorate();
   }
+  ++panelFrames_;
   display.displayBuffer(refreshMode, fadingFix);
 }
 
 void GfxRenderer::displayBufferAsync(HalDisplay::RefreshMode refreshMode) const {
   refreshMode = applyPromotedRefresh(refreshMode);
+  if (gfxScreenTap && gfxScreenTap->hold && gfxScreenTap->hold()) return;
   if (gfxScreenTap) {
     gfxScreenTap->onDisplay();
     if (gfxScreenTap->decorate) gfxScreenTap->decorate();
   }
+  ++panelFrames_;
   // The async path has no turn-off-screen hook, which the sunlight fading fix
   // relies on; keep those users on the blocking path.
   if (fadingFix) {
@@ -2440,13 +2446,17 @@ size_t GfxRenderer::getBufferSize() const { return frameBufferSize; }
 
 void GfxRenderer::displayGrayscaleBase(HalDisplay::RefreshMode fallback) const {
   absoluteGrayPlanes = false;
+  if (gfxScreenTap && gfxScreenTap->hold && gfxScreenTap->hold()) return;
   if (gfxScreenTap) gfxScreenTap->onDisplay();
+  ++panelFrames_;
   display.displayGrayscaleBase(applyPromotedRefresh(fallback), fadingFix);
 }
 
 bool GfxRenderer::displayGrayscaleBase(HalDisplay::GrayscaleMode mode, HalDisplay::RefreshMode fallback) const {
   absoluteGrayPlanes = false;
+  if (gfxScreenTap && gfxScreenTap->hold && gfxScreenTap->hold()) return false;
   if (gfxScreenTap) gfxScreenTap->onDisplay();
+  ++panelFrames_;
   if (!display.displayGrayscaleBase(mode, promotedRefreshPending_ ? promotedRefresh_ : fallback, fadingFix))
     return false;
   promotedRefreshPending_ = false;
@@ -2479,7 +2489,9 @@ void GfxRenderer::copyGrayscaleLsbBuffers() const { display.copyGrayscaleLsbBuff
 void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuffers(frameBuffer); }
 
 void GfxRenderer::displayGrayBuffer() const {
+  if (gfxScreenTap && gfxScreenTap->hold && gfxScreenTap->hold()) return;
   if (gfxScreenTap) gfxScreenTap->onDisplay();
+  ++panelFrames_;
   display.displayGrayBuffer(fadingFix);
   absoluteGrayPlanes = false;
 }

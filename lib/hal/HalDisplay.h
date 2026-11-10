@@ -109,6 +109,19 @@ class HalDisplay {
 
   void displayGrayBuffer(bool turnOffScreen = false);
 
+  // Waveform experiments (dev API): runtime waveform tables and refresh timings.
+  bool setExperimentLut(freeink::ExperimentBank bank, uint8_t table, const uint8_t* data, size_t len) {
+    return einkDisplay.setExperimentLut(bank, table, data, len);
+  }
+  void clearExperimentLuts() { einkDisplay.clearExperimentLuts(); }
+  void setDirectFullClear(bool enabled) { einkDisplay.setDirectFullClear(enabled); }
+  // Single-pass anti-aliasing: Direct passes carry per-pixel actions.
+  bool supportsDirectActions() const { return einkDisplay.supportsDirectActions(); }
+  void setDirectActions(bool enabled) { einkDisplay.setDirectActions(enabled); }
+  size_t recentRefreshTimings(freeink::RefreshTimings* out, size_t max) const {
+    return einkDisplay.recentRefreshTimings(out, max);
+  }
+
   // Tiled grayscale: stream one band of a plane (lsbPlane selects LSB/MSB RAM)
   // straight to the controller; supportsStripGrayscale() gates the path. See
   // EInkDisplay::writeGrayscalePlaneStrip.

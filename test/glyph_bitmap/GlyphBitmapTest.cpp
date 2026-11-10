@@ -66,7 +66,11 @@ void compare(int orientation, int rotation, bool twoBit, Plane plane, bool state
         if (plane == Plane::BW) draw = value < 3;
         if (plane == Plane::GrayLSB) draw = value == 1;
         if (plane == Plane::GrayMSB) draw = value == 1 || value == 2;
-        if (plane != Plane::BW) black = false;
+        // Absolute planes zero a tone's bits: LSB for light and black, MSB for dark and black.
+        if (plane == Plane::AbsoluteLSB) draw = value == 2 || value == 0;
+        if (plane == Plane::AbsoluteMSB) draw = value == 1 || value == 0;
+        if (plane == Plane::GrayLSB || plane == Plane::GrayMSB) black = false;
+        if (plane == Plane::AbsoluteLSB || plane == Plane::AbsoluteMSB) black = true;
       } else {
         draw = (bitmap[source / 8] >> (7 - source % 8)) & 1;
       }
@@ -96,7 +100,7 @@ TEST(GlyphBitmap, MatchesPerPixelReferenceAcrossOrientationsRotationsPlanesAndCl
   for (int orientation = 0; orientation < 4; ++orientation) {
     for (int rotation = 0; rotation < 2; ++rotation) {
       for (bool twoBit : {false, true}) {
-        for (Plane plane : {Plane::BW, Plane::GrayLSB, Plane::GrayMSB}) {
+        for (Plane plane : {Plane::BW, Plane::GrayLSB, Plane::GrayMSB, Plane::AbsoluteLSB, Plane::AbsoluteMSB}) {
           for (bool state : {false, true}) {
             for (int width : {1, 3, 7, 16, 31}) {
               for (const auto [x, y] : {std::pair{-5, -3}, std::pair{0, 0}, std::pair{9, 11}, std::pair{29, 31}}) {

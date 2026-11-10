@@ -40,6 +40,7 @@ struct GfxScreenTap {
   void (*onText)(int x, int y, const char* text);
   void (*onDisplay)();
   void (*decorate)();  // draws into a finished black-and-white frame just before it is shown
+  bool (*hold)();      // true: frames are composed but not sent to the panel
 };
 extern const GfxScreenTap* gfxScreenTap;
 
@@ -65,6 +66,8 @@ class GfxRenderer {
   bool ditherImagesInBw = false;
   Orientation orientation;
   bool fadingFix;
+  mutable uint32_t panelFrames_ = 0;
+  mutable bool absoluteGlyphGray_ = false;
   uint8_t* frameBuffer = nullptr;
   uint32_t frameBufferLoans = 0;
   uint16_t panelWidth = HalDisplay::DISPLAY_WIDTH;
@@ -419,6 +422,13 @@ class GfxRenderer {
   void displayGrayBuffer() const;
   // Active input encoding, used when drawing monochrome overlays into planes.
   bool grayPlanesAreAbsolute() const { return absoluteGrayPlanes; }
+  // Glyphs keep their gray levels in absolute planes (single-pass gray
+  // experiment). Off, absolute passes draw text in plain black and white.
+  void setAbsoluteGlyphGray(bool enabled) const { absoluteGlyphGray_ = enabled; }
+  // Counts every frame sent to the panel, so a caller can tell whether
+  // anything else was shown since its own last frame.
+  uint32_t panelFrameCount() const { return panelFrames_; }
+  bool absoluteGlyphGray() const { return absoluteGlyphGray_; }
   // B/W pass: draw 2-bit image pixels as a 2x2 ordered dither instead of
   // "any ink is black". Only for pages that get no image grayscale pass,
   // because overlay gray planes expect every gray pixel black in the base.
