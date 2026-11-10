@@ -29,3 +29,9 @@ class HaLink {
 };
 
 extern HaLink haLink;
+
+namespace ha {
+// One REST request to the configured HA (bearer token set). Returns the HTTP
+// code, <= 0 on failure; response gets the body when given.
+int restRequest(const char* method, const std::string& path, const std::string& body, std::string* response);
+}  // namespace ha

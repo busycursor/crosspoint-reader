@@ -12,7 +12,7 @@ Commands:
   screen [-o shot.png]             framebuffer as PNG
   logs [--since N] [--grep RE]     recent log lines
   wait REGEX [--timeout S]         wait for a log line
-  open SCREEN [--path P]           sync|home|settings|library|files|transfer|opds|reader
+  open SCREEN [--path P]           sync|home|settings|library|files|transfer|control|opds|reader
   input BUTTON                     confirm|back|next|previous
   settings [KEY...]                read settings;  settings-set KEY=VALUE...
   frontlight [--on/--off] [--brightness N] [--warmth N]

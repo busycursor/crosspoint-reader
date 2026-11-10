@@ -100,7 +100,7 @@ def wait_for_log(regex: str, since: int | None = None, timeout_s: float = 60, ta
 
 @mcp.tool()
 def open_screen(screen: str, path: str | None = None, target: str | None = None) -> str:
-    """Go to a screen: home, sync, settings, library, files, transfer, opds, reader (path = book on SD)."""
+    """Go to a screen: home, sync, settings, library, files, transfer, control, opds, reader (path = book on SD)."""
     client(target).json("POST", "/dev/open", {"screen": screen, **({"path": path} if path else {})})
     return "queued"
 

@@ -13,6 +13,7 @@
 #include "icons/blocks.h"
 #include "icons/book.h"
 #include "icons/folder.h"
+#include "icons/house.h"
 #include "icons/library.h"
 #include "icons/settings2.h"
 #include "icons/transfer.h"
@@ -30,9 +31,10 @@ constexpr int COVER_ROW_EXTRA_HEIGHT = 8;
 CoverGridHomeUi::CoverGridHomeUi(GfxRenderer& renderer)
     : UiAppHost(renderer), coverCache(renderer), renderer(renderer) {}
 
-void CoverGridHomeUi::begin(const std::vector<RecentBook>& recent, bool opds, bool continuing) {
+void CoverGridHomeUi::begin(const std::vector<RecentBook>& recent, bool opds, bool control, bool continuing) {
   books = &recent;
   hasOpds = opds;
+  hasControl = control;
   hasContinueReading = continuing;
   if (!recent.empty()) coverCache.begin();
   resetUi();
@@ -283,10 +285,11 @@ void CoverGridHomeUi::drawGrid(UiScreen& screen) {
 }
 
 void CoverGridHomeUi::drawTabs(UiScreen& screen, fui::Rect rect) {
-  static constexpr const uint8_t* ICONS[] = {FolderIcon, LibraryIcon, BlocksIcon, TransferIcon, Settings2Icon};
   int count = 0;
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < kTabSlots; ++i) {
     if (i == 2 && !hasOpds) continue;
+    if (i == 4 && !hasControl) continue;
+    tabSlot[count] = static_cast<uint8_t>(i);
     auto& tab = tabItems[count];
     tab.value = books->size() + count;
     tab.selected = selected == tab.value;
@@ -301,10 +304,13 @@ void CoverGridHomeUi::drawTabs(UiScreen& screen, fui::Rect rect) {
   tabs.iconSize = 32;
   tabs.iconPainterUserData = this;
   tabs.iconPainter = [](fui::DrawTarget&, fui::Rect iconRect, const fui::TabItem& tab, uint8_t, void* user) {
+    // Same order as HomeActivity's menu: files, library, library slot,
+    // transfer, Control, settings.
+    static constexpr const uint8_t* ICONS[kTabSlots] = {FolderIcon,   LibraryIcon, BlocksIcon,
+                                                        TransferIcon, HouseIcon,   Settings2Icon};
     const auto& self = *static_cast<CoverGridHomeUi*>(user);
     const int index = tab.value - static_cast<int>(self.books->size());
-    const int icon = !self.hasOpds && index >= 2 ? index + 1 : index;
-    self.renderer.drawIcon(ICONS[icon], iconRect.x, iconRect.y, iconRect.width);
+    self.renderer.drawIcon(ICONS[self.tabSlot[index]], iconRect.x, iconRect.y, iconRect.width);
     return true;
   };
   // No pill fill; the underline marks the selected tab.

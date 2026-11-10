@@ -34,8 +34,11 @@ std::string resultEntity;
 ha::EntityState resultState;
 uint32_t generation = 0;  // bumped on sleep; a worker from before drops its result
 
-// GET or POST <url><path>; returns the HTTP code (<= 0 on failure) and the body.
-int request(const char* method, const std::string& path, const std::string& body, std::string* response) {
+std::mutex joinMtx;  // the link worker and the Control session may both join
+
+}  // namespace
+
+int ha::restRequest(const char* method, const std::string& path, const std::string& body, std::string* response) {
   NetworkClient client;
   HTTPClient http;
   http.setConnectTimeout(kHttpTimeoutMs);
@@ -55,17 +58,20 @@ int request(const char* method, const std::string& path, const std::string& body
   return code;
 }
 
+namespace {
+
 ha::LinkStatus runCall(const ha::ServiceCall& call, std::string& entityId, ha::EntityState& fresh) {
   if (!haLink.ensureHomeNetwork()) return ha::LinkStatus::NoNetwork;
 #ifndef SIMULATOR
   WifiPowerSaveGuard powerSave;
 #endif
-  const int code = request("POST", "/api/services/" + call.domain + "/" + call.service, ha::serviceBody(call), nullptr);
+  const int code =
+      ha::restRequest("POST", "/api/services/" + call.domain + "/" + call.service, ha::serviceBody(call), nullptr);
   const ha::LinkStatus status = ha::statusFromHttp(code);
   LOG_INF("HA", "HA call %s.%s %s -> %d", call.domain.c_str(), call.service.c_str(), call.entityId.c_str(), code);
   if (status != ha::LinkStatus::Ok) return status;
   std::string json;
-  const int getCode = request("GET", "/api/states/" + call.entityId, "", &json);
+  const int getCode = ha::restRequest("GET", "/api/states/" + call.entityId, "", &json);
   if (getCode == 200 && ha::parseStateObject(json, entityId, fresh)) return ha::LinkStatus::Ok;
   if (getCode == 404) {
     entityId = call.entityId;
@@ -142,6 +148,7 @@ bool HaLink::takeResult(std::string& entityId, ha::EntityState& fresh) {
 }
 
 bool HaLink::ensureHomeNetwork() {
+  std::lock_guard<std::mutex> joinLock(joinMtx);
   const bool wasUp = WiFi.status() == WL_CONNECTED;
   if (!joinWifiNetwork(ha::config().wifiSsid, kJoinTimeoutMs)) {
     LOG_INF("HA", "HA: home network not available");

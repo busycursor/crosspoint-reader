@@ -22,6 +22,8 @@ class HomeActivity final : public Activity {
   // The home "library" slot (index 2) shows Plugins when any plugin is
   // installed, otherwise OPDS. The index converters gate on its presence.
   bool hasLibrarySlot() const { return hasPlugins || hasOpdsServers; }
+  // Home Assistant's Control page, when /homeassistant.json names a dashboard.
+  static bool hasControlSlot();
   bool hasContinueReading = false;
   bool coverRendered = false;      // Track if cover has been rendered once
   bool coverBufferStored = false;  // Track if cover buffer is stored
@@ -41,7 +43,7 @@ class HomeActivity final : public Activity {
   const bool cleanInitialRefresh;
 
   // Convert HomeMenuItem to menu index (used in onEnter)
-  static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl) {
+  static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl, bool hasControl) {
     int i = 0;
     if (item == HomeMenuItem::FILE_BROWSER) return i;
     ++i;
@@ -51,17 +53,20 @@ class HomeActivity final : public Activity {
     if (hasOpdsUrl) ++i;
     if (item == HomeMenuItem::FILE_TRANSFER) return i;
     ++i;
+    if (item == HomeMenuItem::CONTROL) return hasControl ? i : 0;
+    if (hasControl) ++i;
     if (item == HomeMenuItem::SETTINGS_MENU) return i;
     return 0;
   }
 
   // Convert menu index to HomeMenuItem (used in loop)
-  static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl) {
+  static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl, bool hasControl) {
     int i = 0;
     if (idx == i++) return HomeMenuItem::FILE_BROWSER;
     if (idx == i++) return HomeMenuItem::LIBRARY;
     if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
     if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
+    if (hasControl && idx == i++) return HomeMenuItem::CONTROL;
     if (idx == i) return HomeMenuItem::SETTINGS_MENU;
     return HomeMenuItem::NONE;
   }

@@ -1383,6 +1383,8 @@ void applyPending() {
     activityManager.goToFileBrowser(cmd.path);
   else if (s == "transfer")
     activityManager.goToFileTransfer();
+  else if (s == "control")
+    activityManager.goToControl();
   else if (s == "opds")
     activityManager.goToBrowser();
   else if (s == "reader" && !cmd.path.empty())

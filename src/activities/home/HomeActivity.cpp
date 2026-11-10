@@ -25,9 +25,13 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "homeassistant/HaConfigStore.h"
+
+bool HomeActivity::hasControlSlot() { return ha::enabled() && !ha::config().dashboard.empty(); }
 
 int HomeActivity::getMenuItemCount() const {
   int count = 4;  // File Browser, Library, File transfer, Settings
+  if (hasControlSlot()) count++;
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -246,11 +250,13 @@ void HomeActivity::onEnter() {
   if (coverGridUi) {
     fillCoverGridFromLibrary();
     resolveGridCoverPaths();
-    coverGridUi->begin(recentBooks, hasLibrarySlot(), hasContinueReading);
+    coverGridUi->begin(recentBooks, hasLibrarySlot(), hasControlSlot(), hasContinueReading);
   }
 
   const auto base = static_cast<int>(recentBooks.size());
-  selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasLibrarySlot());
+  selectorIndex = initialMenuItem == HomeMenuItem::NONE
+                      ? 0
+                      : base + menuItemToIndex(initialMenuItem, hasLibrarySlot(), hasControlSlot());
 
   // Trigger first update
   requestUpdate();
@@ -312,7 +318,7 @@ void HomeActivity::loop() {
       return;
     }
     const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
-    switch (indexToMenuItem(menuIndex, hasLibrarySlot())) {
+    switch (indexToMenuItem(menuIndex, hasLibrarySlot(), hasControlSlot())) {
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -324,6 +330,9 @@ void HomeActivity::loop() {
         break;
       case HomeMenuItem::FILE_TRANSFER:
         onFileTransferOpen();
+        break;
+      case HomeMenuItem::CONTROL:
+        activityManager.goToControl();
         break;
       case HomeMenuItem::SETTINGS_MENU:
         onSettingsOpen();
@@ -535,6 +544,10 @@ void HomeActivity::render(RenderLock&&) {
                                         tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Folder, Library, Transfer, Settings};
 
+  if (hasControlSlot()) {
+    menuItems.insert(menuItems.end() - 1, tr(STR_CONTROL));
+    menuIcons.insert(menuIcons.end() - 1, House);
+  }
   if (hasLibrarySlot()) {
     menuItems.insert(menuItems.begin() + 2, hasPlugins ? tr(STR_PLUGINS) : tr(STR_SHELF_SYNC));
     menuIcons.insert(menuIcons.begin() + 2, Plugins);

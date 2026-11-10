@@ -19,6 +19,7 @@
 #include "components/icons/cover.h"
 #include "components/icons/folder.h"
 #include "components/icons/hotspot.h"
+#include "components/icons/house.h"
 #include "components/icons/library.h"
 #include "components/icons/recent.h"
 #include "components/icons/settings2.h"
@@ -60,6 +61,8 @@ const uint8_t* iconForName(UIIcon icon) {
       return BookmarkIcon;
     case UIIcon::Blocks:
       return BlocksIcon;
+    case UIIcon::House:
+      return HouseIcon;
     default:
       return nullptr;
   }

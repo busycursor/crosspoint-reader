@@ -50,6 +50,10 @@ class FakeHaTest(unittest.TestCase):
         self.assertEqual(s["state"], "on")
         self.assertEqual(s["attributes"]["brightness"], 102)
 
+    def test_set_state(self):
+        self.request("POST", "/api/states/sensor.timer_remaining", {"state": "0:10:00"})
+        self.assertEqual(self.request("GET", "/api/states/sensor.timer_remaining")[1]["state"], "0:10:00")
+
     def test_wrong_token_is_401(self):
         self.assertEqual(self.request("GET", "/api/states/light.desk_lamp", token="nope")[0], 401)
 

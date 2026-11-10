@@ -3,7 +3,7 @@
 
   python3 scripts/fake_ha.py --port 18123 --token TOKEN [--fixture scripts/ha_fixtures/home.json] [--down]
 
-Serves GET /api/states, GET /api/states/<id>, POST /api/services/<domain>/<service>
+Serves GET /api/states, GET and POST (set) /api/states/<id>, POST /api/services/<domain>/<service>
 (toggle, turn_on/turn_off with brightness_pct, scene/script turn_on, button press),
 POST /api/services/weather/get_forecasts?return_response and GET /api/lovelace-fixture
 (the fixture's dashboard, for the simulator's REST session). A wrong token gets 401,
@@ -110,6 +110,12 @@ def make_handler(ha: FakeHa):
             parts = url.path.split("/")
             length = int(self.headers.get("Content-Length") or 0)
             data = json.loads(self.rfile.read(length) or b"{}")
+            if len(parts) == 4 and parts[1:3] == ["api", "states"]:  # set a state, as HA's REST API does
+                with ha.lock:
+                    s = ha.states.setdefault(parts[3], {"entity_id": parts[3], "attributes": {}})
+                    s["state"] = str(data.get("state", ""))
+                    s["attributes"].update(data.get("attributes", {}))
+                    return self._send(200, s)
             if len(parts) == 5 and parts[1:3] == ["api", "services"]:
                 domain, service = parts[3], parts[4]
                 if domain == "weather" and service == "get_forecasts":
