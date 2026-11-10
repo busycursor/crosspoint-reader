@@ -16,10 +16,10 @@
 #include <Logging.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 
 #include <algorithm>
 #include <cstring>
-#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -111,17 +111,22 @@ std::string normalizedPath(std::string p) {
 // ---------------------------------------------------------------------------
 // Observers: log lines (any task) and screen text (render task).
 
+// One fixed buffer, in PSRAM when present: per-line heap strings would take
+// small internal-RAM blocks that TLS needs contiguous.
+constexpr size_t kLogLineMax = 240;
 std::mutex logMutex;
-std::deque<std::string> logLines;
-uint32_t logNextSeq = 0;
+char* logRing = nullptr;  // kMaxLogLines slots of kLogLineMax bytes
+uint32_t logNextSeq = 0;  // sequence number of the next line
 
 void onLogLine(const char* line) {
   std::lock_guard<std::mutex> lock(logMutex);
-  std::string s(line);
-  while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
-  logLines.push_back(std::move(s));
+  if (!logRing) return;
+  char* slot = logRing + (logNextSeq % kMaxLogLines) * kLogLineMax;
+  size_t n = strnlen(line, kLogLineMax - 1);
+  while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r')) --n;
+  memcpy(slot, line, n);
+  slot[n] = '\0';
   ++logNextSeq;
-  if (logLines.size() > kMaxLogLines) logLines.pop_front();
 }
 
 std::mutex screenMutex;
@@ -237,9 +242,9 @@ void getLogs(const Request& req, Response& res) {
   JsonArray lines = doc["lines"].to<JsonArray>();
   {
     std::lock_guard<std::mutex> lock(logMutex);
-    const uint32_t firstSeq = logNextSeq - static_cast<uint32_t>(logLines.size());
-    for (size_t i = 0; i < logLines.size(); ++i) {
-      if (firstSeq + i >= since) lines.add(logLines[i]);
+    const uint32_t firstSeq = logNextSeq > kMaxLogLines ? logNextSeq - kMaxLogLines : 0;
+    for (uint32_t seq = std::max(since, firstSeq); logRing && seq < logNextSeq; ++seq) {
+      lines.add(static_cast<const char*>(logRing + (seq % kMaxLogLines) * kLogLineMax));
     }
     doc["next"] = logNextSeq;
     doc["dropped"] = since < firstSeq;
@@ -987,7 +992,12 @@ void begin(void (*enterSleep)()) {
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT && !defined(SIMULATOR)
   logSerial.setRxBufferSize(4096);  // room for several framed body lines
 #endif
+  logRing = static_cast<char*>(heap_caps_malloc(kMaxLogLines * kLogLineMax, MALLOC_CAP_SPIRAM));
+  if (!logRing) LOG_ERR("DEV", "No PSRAM for the log ring; /dev/logs is empty");
   logLineTap = onLogLine;
+  // CrossPoint loads saved networks only when a Wi-Fi screen opens; the
+  // reconnect in keepWifiUp() needs them from boot.
+  WIFI_STORE.loadFromFile();
   gfxScreenTap = &kScreenTap;
   if (CROSSPOINT_DEV_API_TOKEN[0] == '\0') LOG_ERR("DEV", "Dev API built without a token; HTTP requests refused");
 }

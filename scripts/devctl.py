@@ -4,7 +4,7 @@
 Transports (same endpoints on both):
   default            simulator over HTTP (http://127.0.0.1:8090, token "sim")
   --host IP          device over Wi-Fi (token from ../.devapi-token or $CROSSPOINT_DEV_API_TOKEN)
-  --serial [PATH]    USB serial; no PATH = first /dev/cu.usbmodem*, "sim" = the simulator's pty
+  --serial PORT      USB serial; PORT = auto (first /dev/cu.usbmodem*), sim (simulator pty) or a path
 
 Commands:
   sim start|stop|status            headless X4 Pro simulator
@@ -21,7 +21,9 @@ Commands:
   wifi [--ssid S --password-file F]
   opds-add --name N --url U [--password-file F] [--header-file F]
   fs ls|get|put|rm|upload PATH [--file LOCAL]
-  flash FIRMWARE.bin               upload to the SD card, flash, reboot (device only)
+  build [device|sim|all]           build with the dev API token always set (see build())
+  flash [FIRMWARE.bin]             upload to the SD card, flash, reboot (device only);
+                                   no file = build the device firmware first
 """
 
 from __future__ import annotations
@@ -217,7 +219,7 @@ def make_client(args) -> Client:
     if serial is not None:
         if serial == "sim":
             path = str(SIM_PTY)
-        elif serial:
+        elif serial and serial != "auto":
             path = serial
         else:
             ports = sorted(glob.glob("/dev/cu.usbmodem*"))
@@ -466,8 +468,37 @@ def cmd_fs(c, args):
         print("uploaded")
 
 
+PIO = Path.home() / ".platformio/penv/bin/pio"
+BUILD_ENVS = {"device": "x4pro-dev", "sim": "simulator_x4_pro"}
+DEVICE_IMAGE = FIRMWARE / ".pio/build/x4pro-dev/firmware.bin"
+
+
+def build(targets: list[str]) -> None:
+    """Build firmware environments. CROSSPOINT_DEV_API_TOKEN is always set from
+    the token file: x4pro-dev reads it via ${sysenv...}, so building with and
+    without it changes PlatformIO's config checksum, and PlatformIO then
+    deletes every environment's build output."""
+    token = TOKEN_FILE.read_text().strip() if TOKEN_FILE.exists() else ""
+    if not token:
+        sys.exit(f"missing {TOKEN_FILE}")
+    env = dict(os.environ, CROSSPOINT_DEV_API_TOKEN=token)
+    for t in targets:
+        name = BUILD_ENVS[t]
+        log = FIRMWARE / f"build-{name}.log"
+        print(f"building {name} (log: {log}) ...")
+        with open(log, "w") as f:
+            rc = subprocess.run([str(PIO), "run", "-e", name], cwd=FIRMWARE, env=env, stdout=f,
+                                stderr=subprocess.STDOUT).returncode
+        if rc != 0:
+            errors = [l for l in log.read_text(errors="replace").splitlines() if "error:" in l][:10]
+            sys.exit(f"{name} build failed:\n" + "\n".join(errors))
+    print("built")
+
+
 def cmd_flash(c, args):
-    image = Path(args.image)
+    if not args.image:
+        build(["device"])
+    image = Path(args.image) if args.image else DEVICE_IMAGE
     target = "/.crosspoint/dev-firmware.bin"
     print(f"uploading {image.stat().st_size} bytes ...")
     c.upload(target, image.read_bytes())
@@ -480,7 +511,7 @@ def cmd_flash(c, args):
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--host", help="device IP for Wi-Fi (default: local simulator)")
-    p.add_argument("--serial", nargs="?", const="", help="use USB serial (optional port path, or 'sim')")
+    p.add_argument("--serial", metavar="PORT", help="use USB serial: auto, sim, or a port path")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("sim")
@@ -529,9 +560,14 @@ def main() -> None:
     s.add_argument("path")
     s.add_argument("--file")
     s = sub.add_parser("flash")
-    s.add_argument("image")
+    s.add_argument("image", nargs="?")
+    s = sub.add_parser("build")
+    s.add_argument("target", nargs="?", default="device", choices=["device", "sim", "all"])
 
     args = p.parse_args()
+    if args.cmd == "build":
+        build(["device", "sim"] if args.target == "all" else [args.target])
+        return
     if args.cmd == "sim":
         {"start": sim_start, "stop": sim_stop,
          "status": lambda a: print("running" if sim_pid() else "stopped")}[args.action](args)

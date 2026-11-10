@@ -169,8 +169,16 @@ def wifi(ssid: str | None = None, password_file: str | None = None, target: str 
 
 
 @mcp.tool()
-def flash(image_path: str, target: str | None = None) -> dict:
-    """Upload a firmware .bin to the SD card, flash it and reboot (device only; USB/esptool stays the recovery path)."""
+def build(which: str = "device") -> str:
+    """Build firmware: "device" (x4pro-dev), "sim" (simulator) or "all"."""
+    devctl.build(["device", "sim"] if which == "all" else [which])
+    return "built"
+
+
+@mcp.tool()
+def flash(image_path: str | None = None, target: str | None = None) -> dict:
+    """Flash the device and reboot it: uploads to the SD card, then flashes. Without image_path,
+    builds the device firmware first. USB/esptool stays the recovery path."""
     c = client(target)
     devctl.cmd_flash(c, SimpleNamespace(image=image_path))
     return {"status": "flashed; rebooting"}
