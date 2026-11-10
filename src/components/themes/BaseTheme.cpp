@@ -1026,10 +1026,18 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     leftClusterWidth += batteryWidth;
   }
 
-  // Draw Clock (any board whose RTC probe succeeded)
+  // Draw Clock (any board whose RTC probe succeeded). A centred clock is laid
+  // out with the title below, so the two share the centre.
+  std::string centerClock;
   if (sb.showsClock() && halClock.isAvailable()) {
     char timeBuf[9];
-    if (halClock.formatTime(timeBuf, sizeof(timeBuf), sb.clock12h)) {
+    if (!halClock.formatTime(timeBuf, sizeof(timeBuf), sb.clock12h)) {
+      timeBuf[0] = '\0';
+    } else if (sb.clockMode == CrossPointSettings::STATUS_BAR_CLOCK_CENTER) {
+      centerClock = timeBuf;
+      timeBuf[0] = '\0';
+    }
+    if (timeBuf[0] != '\0') {
       int clockTextWidth = renderer.getTextWidth(SMALL_FONT_ID, timeBuf);
       int clockX = 0;
       // Position to the left or right of the progress text (with a small gap)
@@ -1051,6 +1059,12 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     const int bookmarkY = textY + 5;
     drawBookmarkStatusIcon(renderer, bookmarkX, bookmarkY);
     leftClusterWidth += bookmarkStatusIconWidth + bookmarkGap;
+  }
+
+  // Centred group: clock, then the title. Truncation below shortens the end,
+  // so a long title gives way before the clock does.
+  if (!centerClock.empty()) {
+    title = title.empty() ? centerClock : centerClock + "  " + title;
   }
 
   // Draw Title

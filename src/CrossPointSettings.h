@@ -60,6 +60,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     STATUS_BAR_CLOCK_HIDE = 0,
     STATUS_BAR_CLOCK_RIGHT = 1,
     STATUS_BAR_CLOCK_LEFT = 2,
+    STATUS_BAR_CLOCK_CENTER = 3,  // shares the centre with the title when both show
     STATUS_BAR_CLOCK_MODE_COUNT
   };
 
