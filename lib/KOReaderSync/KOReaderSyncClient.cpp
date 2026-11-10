@@ -178,6 +178,12 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
       LOG_ERR("KOSync", "JSON parse failed: %s", error.c_str());
       return JSON_ERROR;
     }
+    // Calibre-Web-Automated (like the reference server) answers 200 {} for a
+    // document with no stored progress; that is not a record at 0%.
+    if (!doc["progress"].is<const char*>()) {
+      LOG_DBG("KOSync", "No stored progress (empty record)");
+      return NOT_FOUND;
+    }
 
     outProgress.document = documentHash;
     outProgress.progress = doc["progress"].as<std::string>();
