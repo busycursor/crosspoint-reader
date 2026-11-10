@@ -21,6 +21,7 @@
 #include "activities/settings/SettingsActivity.h"
 #include "components/UITheme.h"
 #include "util/DictionaryRegistry.h"
+#include "util/GrayToneTracker.h"
 #include "util/SlideSwitch.h"
 
 // Build the font family setting dynamically. When registry is non-null, SD card fonts
@@ -288,6 +289,9 @@ inline bool isHiddenOnDevice(const SettingInfo& s) {
     // must not drop the saved value.
     case StrId::STR_TILT_PAGE_TURN:
       return !halTiltSensor.isAvailable();
+    // Single-pass anti-aliasing drives UC8279 pixel actions directly.
+    case StrId::STR_AA_REFRESH:
+      return !gray_tracker::panelSupported();
     // Clock settings need the RTC, as on the device (ClockSettingsActivity).
     case StrId::STR_CLOCK:
     case StrId::STR_CLOCK_FORMAT:

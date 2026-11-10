@@ -300,6 +300,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t characterSpacing = CHARACTER_SPACING_OFFSET;
   int8_t getCharacterSpacing() const { return static_cast<int8_t>(characterSpacing - CHARACTER_SPACING_OFFSET); }
   uint8_t textAntiAliasing = 1;
+  // How anti-aliased pages are drawn (UC8279 panels): one waveform, or the
+  // stock black/white refresh followed by a gray pass.
+  enum TEXT_AA_REFRESH { AA_REFRESH_SINGLE = 0, AA_REFRESH_TWO_STEP = 1, TEXT_AA_REFRESH_COUNT };
+  uint8_t textAntiAliasingRefresh = AA_REFRESH_SINGLE;
   // Short power button click behaviour
   uint8_t shortPwrBtn = IGNORE;
   // X4 Pro: double-click power toggles the frontlight. Disabling frees the

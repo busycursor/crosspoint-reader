@@ -42,6 +42,7 @@
 #include "activities/settings/SettingsSection.h"
 #include "components/themes/BaseTheme.h"
 #include "util/DictionaryRegistry.h"
+#include "util/GrayToneTracker.h"
 
 #ifdef SIMULATOR
 #include <HalSystem.h>
@@ -183,7 +184,11 @@ void decorateFrame() {
     lastBadge.valid = BaseTheme::drawApiBadgeInHeader(renderer, lastBadge.x, lastBadge.y, lastBadge.size);
   }
 }
-const GfxScreenTap kScreenTap{onClear, onText, onDisplay, decorateFrame};
+// Calibration keeps its pattern on the panel until the user interacts or the
+// next changing request arrives; frames are composed but not shown meanwhile.
+std::atomic<bool> panelHeld{false};
+bool holdPanel() { return panelHeld.load(); }
+const GfxScreenTap kScreenTap{onClear, onText, onDisplay, decorateFrame, holdPanel};
 
 // ---------------------------------------------------------------------------
 // Commands that must run from loop(), not inside a request.
@@ -238,6 +243,11 @@ void getInfo(const Request&, Response& res) {
   doc["board"] = BoardConfig::ACTIVE.name;
   doc["display"]["width"] = HalDisplay::DISPLAY_WIDTH;
   doc["display"]["height"] = HalDisplay::DISPLAY_HEIGHT;
+  if (const char* controller = display.controllerName()) doc["display"]["controller"] = controller;
+  // Panel waveform revision (UC8279 LUT_VER): picks the stock gray pulse length.
+  char variant[8];
+  snprintf(variant, sizeof(variant), "0x%02X", static_cast<unsigned>(BoardConfig::ACTIVE.displayControllerVariant));
+  doc["display"]["variant"] = std::string(variant);
   doc["sd"]["total"] = Storage.sdTotalBytes();
   uint64_t used = 0;
   if (Storage.sdUsedBytes(used)) doc["sd"]["used"] = used;
@@ -605,6 +615,186 @@ void postFsUpload(const Request& req, Response& res) {
   req.uploadOk ? res.message(200, "uploaded") : res.message(500, "upload failed");
 }
 
+// --- waveform experiments (UC8279; see WaveformExperiment.h) ---
+
+bool directGrayOn = false;
+
+#ifndef SIMULATOR
+bool bankFromName(const std::string& name, freeink::ExperimentBank& out) {
+  if (name == "overlay")
+    out = freeink::ExperimentBank::Overlay;
+  else if (name == "settle")
+    out = freeink::ExperimentBank::Settle;
+  else if (name == "direct")
+    out = freeink::ExperimentBank::Direct;
+  else
+    return false;
+  return true;
+}
+#endif
+
+// {"bank": "overlay|settle|direct", "tables": {"0": [bytes...], ...}}; keys are
+// LUT register offsets from 0x20. All tables are checked before any is loaded.
+void postWaveform(const Request& req, Response& res) {
+#ifdef SIMULATOR
+  (void)req;
+  res.message(501, "the simulator has no panel waveforms");
+#else
+  JsonDocument body;
+  freeink::ExperimentBank bank;
+  if (!parseJson(req, body) || !bankFromName(body["bank"] | "", bank) || !body["tables"].is<JsonObject>()) {
+    res.message(400, "expected {bank: overlay|settle|direct, tables: {\"0\": [bytes], ...}}");
+    return;
+  }
+  const size_t want = bank == freeink::ExperimentBank::Settle ? 42 : 49;
+  std::vector<std::pair<uint8_t, std::vector<uint8_t>>> tables;
+  for (JsonPairConst kv : body["tables"].as<JsonObjectConst>()) {
+    const int index = atoi(kv.key().c_str());
+    JsonArrayConst arr = kv.value().as<JsonArrayConst>();
+    if (index < 0 || index > 4 || arr.size() != want) {
+      res.message(400, "table keys 0..4, each with exactly 42 (settle) or 49 bytes");
+      return;
+    }
+    std::vector<uint8_t> bytes;
+    for (JsonVariantConst v : arr) bytes.push_back(static_cast<uint8_t>(v.as<int>()));
+    tables.emplace_back(static_cast<uint8_t>(index), std::move(bytes));
+  }
+  JsonDocument doc;
+  JsonArray loaded = doc["loaded"].to<JsonArray>();
+  for (const auto& t : tables) {
+    if (!display.setExperimentLut(bank, t.first, t.second.data(), t.second.size())) {
+      res.message(409, "this display controller does not take experiment tables");
+      return;
+    }
+    loaded.add(t.first);
+  }
+  LOG_INF("DEV", "Waveform: %u table(s) loaded", static_cast<unsigned>(tables.size()));
+  res.json(200, doc);
+#endif
+}
+
+// Back to stock: drop every experiment table and switch the experiment off.
+void deleteWaveform(const Request&, Response& res) {
+  directGrayOn = false;
+#ifndef SIMULATOR
+  display.clearExperimentLuts();
+#endif
+  LOG_INF("DEV", "Waveform: back to stock");
+  res.message(200, "stock waveforms restored");
+}
+
+// {"direct": bool, "fullClear": bool, "codes": {"hold": 0..3, "white": .., "black": .., "gray": ..}}
+// Codes are the calibrated 2-bit plane values for each action.
+void postDisplayExperiment(const Request& req, Response& res) {
+  JsonDocument body;
+  if (!parseJson(req, body)) {
+    res.message(400, "expected {direct?, fullClear?, codes?}");
+    return;
+  }
+  if (body["codes"].is<JsonObject>()) {
+    waveform_actions::ActionCodes c = gray_tracker::codes();
+    c.hold = static_cast<uint8_t>((body["codes"]["hold"] | c.hold) & 3);
+    c.toWhite = static_cast<uint8_t>((body["codes"]["white"] | c.toWhite) & 3);
+    c.toBlack = static_cast<uint8_t>((body["codes"]["black"] | c.toBlack) & 3);
+    c.toGray = static_cast<uint8_t>((body["codes"]["gray"] | c.toGray) & 3);
+    if ((1 << c.hold | 1 << c.toWhite | 1 << c.toBlack | 1 << c.toGray) != 0xF) {
+      res.message(400, "the four actions need four different codes");
+      return;
+    }
+    gray_tracker::setCodes(c);
+  }
+  if (body["direct"].is<bool>()) {
+    directGrayOn = body["direct"].as<bool>();
+    gray_tracker::invalidate();  // start from a recorded stock page
+  }
+#ifndef SIMULATOR
+  if (body["fullClear"].is<bool>()) display.setDirectFullClear(body["fullClear"].as<bool>());
+#endif
+  LOG_INF("DEV", "Waveform experiment: direct=%d", directGrayOn ? 1 : 0);
+  JsonDocument doc;
+  doc["direct"] = directGrayOn;
+  const auto& c = gray_tracker::codes();
+  doc["codes"]["hold"] = c.hold;
+  doc["codes"]["white"] = c.toWhite;
+  doc["codes"]["black"] = c.toBlack;
+  doc["codes"]["gray"] = c.toGray;
+  res.json(200, doc);
+}
+
+// Calibration: a known panel (half black, half white, via a full refresh),
+// then ONE Direct pass whose two planes hold four bands, band k carrying code
+// k (plane A = bit 0, plane B = bit 1). Each band shows what the table for
+// that code does from black and from white. Panel coordinates: bands split the
+// 800-pixel width, the 480-pixel height is black above 240 and white below.
+// In portrait the bands run top to bottom (code 0 first); the white start is
+// on the left, the black start on the right.
+void postCalibrate(const Request&, Response& res) {
+#ifdef SIMULATOR
+  res.message(501, "the simulator has no panel waveforms");
+#else
+  const uint16_t w = HalDisplay::DISPLAY_WIDTH, h = HalDisplay::DISPLAY_HEIGHT, wb = w / 8;
+  const size_t bytes = static_cast<size_t>(wb) * h;
+  uint8_t* planeA = static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM));
+  uint8_t* planeB = static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM));
+  if (!planeA || !planeB) {
+    heap_caps_free(planeA);
+    heap_caps_free(planeB);
+    res.message(500, "no PSRAM for calibration planes");
+    return;
+  }
+  {
+    RenderLock lock;
+    uint8_t* fb = display.getFrameBuffer();
+    for (uint16_t y = 0; y < h; ++y) memset(fb + static_cast<size_t>(y) * wb, y < h / 2 ? 0x00 : 0xFF, wb);
+    for (uint16_t y = 0; y < h; ++y) {
+      for (uint16_t xb = 0; xb < wb; ++xb) {
+        const int code = (xb * 8) / (w / 4);
+        planeA[static_cast<size_t>(y) * wb + xb] = (code & 1) ? 0xFF : 0x00;
+        planeB[static_cast<size_t>(y) * wb + xb] = (code & 2) ? 0xFF : 0x00;
+      }
+    }
+    display.displayBuffer(HalDisplay::FULL_REFRESH);
+    if (!display.displayGrayscaleBase(HalDisplay::GrayscaleMode::Direct, HalDisplay::FAST_REFRESH)) {
+      heap_caps_free(planeA);
+      heap_caps_free(planeB);
+      res.message(409, "this display has no Direct mode");
+      return;
+    }
+    display.copyGrayscaleBuffers(planeA, planeB);
+    display.displayGrayBuffer();
+    display.cleanupGrayscaleBuffers(fb);
+  }
+  heap_caps_free(planeA);
+  heap_caps_free(planeB);
+  gray_tracker::invalidate();
+  panelHeld.store(true);
+  LOG_INF("DEV", "Calibration pattern shown; panel held until input");
+  res.message(200, "pattern shown; restore with a full refresh and reopen a screen");
+#endif
+}
+
+void getDisplayTimings(const Request&, Response& res) {
+  JsonDocument doc;
+  doc["direct"] = directGrayOn;
+  JsonArray arr = doc["refreshes"].to<JsonArray>();
+#ifndef SIMULATOR
+  freeink::RefreshTimings t[6];
+  const size_t n = display.recentRefreshTimings(t, 6);
+  for (size_t i = 0; i < n; ++i) {
+    JsonObject o = arr.add<JsonObject>();
+    o["pass"] = t[i].pass ? t[i].pass : "";
+    o["at_ms"] = t[i].atMs;
+    o["stream_us"] = t[i].streamUs;
+    o["lut_us"] = t[i].lutUs;
+    o["power_on_us"] = t[i].powerOnUs;
+    o["refresh_us"] = t[i].refreshUs;
+    o["power_off_us"] = t[i].powerOffUs;
+    o["total_us"] = t[i].totalUs;
+  }
+#endif
+  res.json(200, doc);
+}
+
 // --- firmware ---
 
 void postFlash(const Request& req, Response& res) {
@@ -664,11 +854,19 @@ const Route kRoutes[] = {
     {"DELETE", "/dev/fs", deleteFs},
     {"POST", kUploadPath, postFsUpload},
     {"POST", "/dev/flash", postFlash},
+    {"POST", "/dev/display/waveform", postWaveform},
+    {"DELETE", "/dev/display/waveform", deleteWaveform},
+    {"POST", "/dev/display/experiment", postDisplayExperiment},
+    {"GET", "/dev/display/timings", getDisplayTimings},
+    {"POST", "/dev/display/calibrate", postCalibrate},
 };
 
 void dispatch(const Request& req, Response& res) {
   lastRequestMs = millis();
   if (req.method != "GET") lastChangeMs = lastRequestMs | 1;
+  if (req.method != "GET" && req.path != "/dev/display/calibrate" && panelHeld.exchange(false)) {
+    activityManager.requestUpdate(true);
+  }
   for (const auto& r : kRoutes) {
     if (req.path == r.path && req.method == r.method) {
       r.handler(req, res);
@@ -1109,6 +1307,11 @@ void updateBadge() {
 }
 
 void loop() {
+  if (panelHeld.load() && (gpio.wasAnyPressed() || gpio.wasTouchActivity())) {
+    panelHeld.store(false);
+    LOG_INF("DEV", "Panel hold released by input");
+    activityManager.requestUpdate(true);
+  }
   updateBadge();
   pollSerial();  // always: a cable can switch Developer Mode on
   const bool on = enabled();
@@ -1192,9 +1395,13 @@ void applyPending() {
     LOG_ERR("DEV", "Unknown screen: %s", s.c_str());
 }
 
-bool keepAwake() { return enabled() && lastRequestMs != 0 && millis() - lastRequestMs < kKeepAwakeMs; }
+bool keepAwake() {
+  return panelHeld.load() || (enabled() && lastRequestMs != 0 && millis() - lastRequestMs < kKeepAwakeMs);
+}
 
 bool enabled() { return SETTINGS.developerMode != 0; }
+
+bool directGrayExperiment() { return enabled() && directGrayOn; }
 
 bool indicatorActive() { return operationRunning || (lastChangeMs != 0 && millis() - lastChangeMs < kBadgeHoldMs); }
 

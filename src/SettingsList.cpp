@@ -120,6 +120,11 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   emit(SettingInfo::Toggle(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing, "textAntiAliasing",
                            StrId::STR_CAT_READER)
            .withTextSettings());
+  // Always persisted; isHiddenOnDevice() shows it on UC8279 panels only.
+  emit(SettingInfo::Enum(StrId::STR_AA_REFRESH, &CrossPointSettings::textAntiAliasingRefresh,
+                         {StrId::STR_AA_REFRESH_SINGLE, StrId::STR_AA_REFRESH_TWO_STEP}, "textAntiAliasingRefresh",
+                         StrId::STR_CAT_READER)
+           .withTextSettings());
   emit(SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
                          {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS,
                           StrId::STR_IMAGES_DISPLAY_BW},

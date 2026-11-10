@@ -48,7 +48,7 @@ int main() {
   };
   auto page = std::make_unique<Page>(order);
   const int fontId = 0, orientedMarginTop = 0, orientedMarginLeft = 0;
-  const bool absoluteImageGrayscale = false;
+  const bool absoluteGrayscale = false;
   bool needsTextGrayscale = true;
   auto drawClippingHighlights = [&](Page&, int, int, int) { assert(++order == 1); };
   auto renderStatusBar = [&] { assert(++order == 3); };

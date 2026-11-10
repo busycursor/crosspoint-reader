@@ -56,9 +56,11 @@
 #include "clippings/ClippingText.h"
 #include "clippings/ClippingsManager.h"
 #include "components/UITheme.h"
+#include "dev/DevApi.h"
 #include "fontIds.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
+#include "util/GrayToneTracker.h"
 #include "util/ScreenshotUtil.h"
 
 namespace {
@@ -2170,10 +2172,28 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool cleanImageBasePending = manualRefreshPending || pagesUntilFullRefresh <= 1;
   const bool needsTextGrayscale = SETTINGS.textAntiAliasing;
   const bool needsAnyGrayscale = needsTextGrayscale || (pageHasImages && !BoardConfig::isEegoA4());
-  const bool absoluteImageGrayscale = pageHasImages && !gpio.deviceIsX3() &&
+  // Single-pass anti-aliasing (Refresh: Single, UC8279): one Direct refresh
+  // whose plane bits are per-pixel actions (hold / to white / to black / to
+  // gray), so unchanged pixels idle and the grays land with the text. The
+  // actions need the tones already on the panel; without them the page goes
+  // out the stock two-step way and its tones are recorded for the next one.
+  // The dev API can force it on for waveform experiments.
+  const bool singlePassPanel =
+      (SETTINGS.textAntiAliasingRefresh == CrossPointSettings::AA_REFRESH_SINGLE || dev_api::directGrayExperiment()) &&
+      !gpio.deviceIsX3() && gray_tracker::panelSupported() &&
+      renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Direct).supported();
+  // A page due for the periodic clean (Refresh Frequency) goes out the stock
+  // way, which clears ghosting; the next page resumes single-pass.
+  const bool directGrayscale = singlePassPanel && needsTextGrayscale && !pageHasImages &&
+                               gray_tracker::previousKnown(renderer) && pagesUntilFullRefresh > 1;
+  const bool recordTones = singlePassPanel && needsTextGrayscale && !pageHasImages && !directGrayscale;
+  const bool absoluteImageGrayscale = !directGrayscale && pageHasImages && !gpio.deviceIsX3() &&
                                       display.getController() == HalDisplay::Controller::UC8279 &&
                                       renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
+  // Absolute gray planes describe the whole frame (white background, status bar included).
+  const bool absoluteGrayscale = absoluteImageGrayscale || directGrayscale;
   const auto grayscale = renderer.grayscaleCapabilities(absoluteImageGrayscale ? HalDisplay::GrayscaleMode::Absolute
+                                                        : directGrayscale      ? HalDisplay::GrayscaleMode::Direct
                                                                                : HalDisplay::GrayscaleMode::Overlay);
   const bool tiledGrayscale = needsAnyGrayscale && grayscale.stripUploads;
   // Paper Mono only (no other panel combines): defer the B/W base activation so
@@ -2186,13 +2206,13 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   auto renderGrayscalePass = [&]() {
     // A4 gray planes replace the full page, including its clipping highlights.
     if (BoardConfig::isEegoA4()) drawClippingHighlights(*page, fontId, orientedMarginTop, orientedMarginLeft);
-    if (absoluteImageGrayscale || needsTextGrayscale) {
+    if (absoluteGrayscale || needsTextGrayscale) {
       page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
     } else {
       page->renderImages(renderer, fontId, orientedMarginLeft, orientedMarginTop);
     }
     // A4 replaces the whole frame with its gray planes, including the status bar.
-    if (absoluteImageGrayscale || BoardConfig::isEegoA4()) renderStatusBar();
+    if (absoluteGrayscale || BoardConfig::isEegoA4()) renderStatusBar();
   };
 
   if (pageHasImagesNeedingDecode) {
@@ -2216,6 +2236,17 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     }
     LOG_DBG("ERS", "UC8279 image page: absolute quality waveform");
     pagesUntilFullRefresh = 1;
+  } else if (directGrayscale) {
+    // No refresh here: the driver holds the base; the action planes below go
+    // out with it as one waveform.
+    gray_tracker::setPanelActions(true);
+    if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Direct, HalDisplay::FAST_REFRESH)) {
+      gray_tracker::setPanelActions(false);
+      LOG_ERR("ERS", "Could not start single-pass page; displaying B/W");
+      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+      return;
+    }
+    pagesUntilFullRefresh--;
   } else if (pageHasImages) {
     // Image pages use one base refresh before the grayscale pass. FAST leaves
     // the panel receptive to the gray waveform; pending cleanup still honors
@@ -2355,27 +2386,71 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     if (needsAnyGrayscale) {
       if (!renderer.storeBwBuffer()) {
         LOG_ERR("ERS", "Failed to store BW buffer for grayscale render; skipping grayscale this page");
-        if (absoluteImageGrayscale) renderer.setRenderMode(GfxRenderer::BW);
+        if (absoluteGrayscale) renderer.setRenderMode(GfxRenderer::BW);
+        // The Direct experiment has not shown the page yet; show it in B/W.
+        if (directGrayscale) ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
         return;
       }
       const auto tBwStore = millis();
 
-      renderer.clearScreen(absoluteImageGrayscale ? 0xFF : 0x00);
+      uint8_t* const fb = renderer.getFrameBuffer();
+      const size_t fbBytes = renderer.getBufferSize();
+      // Experiment pages draw text with its gray levels in the absolute planes.
+      struct AbsoluteGlyphScope {
+        const GfxRenderer& r;
+        ~AbsoluteGlyphScope() { r.setAbsoluteGlyphGray(false); }
+      } absoluteGlyphScope{renderer};
+      renderer.setAbsoluteGlyphGray(directGrayscale);
+      renderer.clearScreen(absoluteGrayscale ? 0xFF : 0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
       renderGrayscalePass();
-      renderer.copyGrayscaleLsbBuffers();
+      // An action page sends both planes once both tones are known.
+      if (directGrayscale) {
+        gray_tracker::stashNewLsb(fb, fbBytes);
+      } else {
+        renderer.copyGrayscaleLsbBuffers();
+      }
       const auto tGrayLsb = millis();
 
-      renderer.clearScreen(absoluteImageGrayscale ? 0xFF : 0x00);
+      renderer.clearScreen(absoluteGrayscale ? 0xFF : 0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
       renderGrayscalePass();
-      renderer.copyGrayscaleMsbBuffers();
+      if (directGrayscale) {
+        const uint8_t* planeA = nullptr;
+        const uint8_t* planeB = nullptr;
+        waveform_actions::ActionCounts counts;
+        if (gray_tracker::makeActionPlanes(fb, fbBytes, &planeA, &planeB, &counts)) {
+          memcpy(fb, planeA, fbBytes);
+          renderer.copyGrayscaleLsbBuffers();
+          memcpy(fb, planeB, fbBytes);
+          renderer.copyGrayscaleMsbBuffers();
+          LOG_INF("ERS", "Single-pass page: hold=%u white=%u black=%u gray=%u gray-from-black=%u",
+                  static_cast<unsigned>(counts.hold), static_cast<unsigned>(counts.toWhite),
+                  static_cast<unsigned>(counts.toBlack), static_cast<unsigned>(counts.toGray),
+                  static_cast<unsigned>(counts.grayFromBlack));
+        } else {
+          LOG_ERR("ERS", "Action planes unavailable; page not refreshed");
+        }
+      } else {
+        if (recordTones) gray_tracker::captureOverlayMask(fb, fbBytes);
+        renderer.copyGrayscaleMsbBuffers();
+      }
       const auto tGrayMsb = millis();
 
       renderer.displayGrayBuffer();
       const auto tGrayDisplay = millis();
       renderer.setRenderMode(GfxRenderer::BW);
       renderer.restoreBwBuffer();
+      if (directGrayscale) {
+        // Hand the controller a coherent B/W baseline again (the action
+        // planes are still in its RAM) so the next menu or B/W page diffs
+        // correctly.
+        renderer.cleanupGrayscaleWithFrameBuffer();
+        gray_tracker::setPanelActions(false);
+        gray_tracker::markShown(renderer);
+      } else if (recordTones) {
+        gray_tracker::recordOverlayPage(renderer, fb, fbBytes);
+      }
       const auto tBwRestore = millis();
 
       const auto tEnd = millis();

@@ -26,6 +26,9 @@ void applyPending();
 bool keepAwake();
 // Developer Mode is on: Wi-Fi stays up and network screens keep it on exit.
 bool enabled();
+// Waveform experiment: grayscale reader pages go out as one Direct-mode
+// refresh with the experiment tables. Runtime only; a reboot clears it.
+bool directGrayExperiment();
 // True while a host tool is changing things (any non-read request, or an
 // operation one started), and for a few seconds after. Drives the on-screen
 // "API active" badge so the user knows not to use the device meanwhile.
@@ -38,6 +41,7 @@ inline void loop() {}
 inline void applyPending() {}
 inline bool keepAwake() { return false; }
 inline bool enabled() { return false; }
+inline bool directGrayExperiment() { return false; }
 inline bool indicatorActive() { return false; }
 
 #endif
