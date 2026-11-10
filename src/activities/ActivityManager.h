@@ -101,6 +101,7 @@ class ActivityManager {
 #endif
   // Name of the foreground activity (e.g. "Home"); empty before boot finishes.
   std::string currentActivityName() const;
+  bool allowsHomeAssistantWifiOff() const;
   void goToPlugins(bool showOpds);
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   void goToSleep(bool fromTimeout = false);

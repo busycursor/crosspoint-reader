@@ -53,6 +53,9 @@ class Activity {
   // Returns true when the activity schedules its own forced refresh.
   virtual bool handleForcedRefresh() { return false; }
   virtual bool isHomeActivity() const { return false; }
+  // Screens that use no network themselves; only on these may the Home
+  // Assistant link turn its idle Wi-Fi off (readers and Home always may).
+  virtual bool allowsHomeAssistantWifiOff() const { return false; }
   virtual bool handleHomeGesture() { return false; }
   virtual ScreenshotInfo getScreenshotInfo() const { return {}; }
 

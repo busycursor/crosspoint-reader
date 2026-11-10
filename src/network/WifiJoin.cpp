@@ -6,6 +6,23 @@
 
 #include "WifiCredentialStore.h"
 
+namespace {
+
+bool joinCredential(const WifiCredential& cred, const unsigned long timeoutMs) {
+  LOG_INF("WIFI", "Joining saved network %s (status %d, mode %d)", cred.ssid.c_str(), static_cast<int>(WiFi.status()),
+          static_cast<int>(WiFi.getMode()));
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(cred.ssid.c_str(), cred.password.c_str());
+  const unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) delay(100);
+  const bool ok = WiFi.status() == WL_CONNECTED;
+  LOG_INF("WIFI", "Join %s after %lu ms (status %d)", ok ? "succeeded" : "failed", millis() - start,
+          static_cast<int>(WiFi.status()));
+  return ok;
+}
+
+}  // namespace
+
 bool joinSavedWifi(const unsigned long timeoutMs) {
   if (WiFi.status() == WL_CONNECTED) return true;
   WIFI_STORE.loadFromFile();
@@ -15,14 +32,22 @@ bool joinSavedWifi(const unsigned long timeoutMs) {
     LOG_INF("WIFI", "No saved network to join");
     return false;
   }
-  LOG_INF("WIFI", "Joining saved network %s (status %d, mode %d)", cred->ssid.c_str(), static_cast<int>(WiFi.status()),
-          static_cast<int>(WiFi.getMode()));
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(cred->ssid.c_str(), cred->password.c_str());
-  const unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) delay(100);
-  const bool ok = WiFi.status() == WL_CONNECTED;
-  LOG_INF("WIFI", "Join %s after %lu ms (status %d)", ok ? "succeeded" : "failed", millis() - start,
-          static_cast<int>(WiFi.status()));
-  return ok;
+  return joinCredential(*cred, timeoutMs);
+}
+
+bool joinWifiNetwork(const std::string& ssid, const unsigned long timeoutMs) {
+  if (WiFi.status() == WL_CONNECTED) {
+#ifdef SIMULATOR
+    return true;  // the simulator's one fake network stands in for every saved one
+#else
+    return ssid == WiFi.SSID().c_str();
+#endif
+  }
+  WIFI_STORE.loadFromFile();
+  const auto cred = WIFI_STORE.findCredential(ssid);
+  if (!cred) {
+    LOG_INF("WIFI", "Network %s is not saved", ssid.c_str());
+    return false;
+  }
+  return joinCredential(*cred, timeoutMs);
 }

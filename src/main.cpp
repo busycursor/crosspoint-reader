@@ -47,6 +47,7 @@
 #include "dev/DevApi.h"
 #include "fontIds.h"
 #include "homeassistant/HaConfigStore.h"
+#include "homeassistant/HaLink.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
@@ -500,6 +501,7 @@ void enterDeepSleep(bool fromTimeout = false) {
     Storage.remove(SLEEP_FRAME_FILE);
   }
 
+  haLink.onSleep();
   // Tear down WiFi so the modem power domain isn't held alive across deep sleep.
   // Wake from deep sleep is effectively a chip reset, so no state needs to survive.
   if (WiFi.getMode() != WIFI_MODE_NULL) {
@@ -1087,6 +1089,7 @@ void loop() {
     activityManager.requestUpdate();
   }
 
+  haLink.tick();
   const unsigned long activityStartTime = millis();
   activityManager.loop();
   const unsigned long activityDuration = millis() - activityStartTime;

@@ -316,6 +316,11 @@ std::string ActivityManager::currentActivityName() const {
   return currentActivity ? currentActivity->name : std::string();
 }
 
+bool ActivityManager::allowsHomeAssistantWifiOff() const {
+  return currentActivity && (currentActivity->isReaderActivity() || currentActivity->isHomeActivity() ||
+                             currentActivity->allowsHomeAssistantWifiOff());
+}
+
 #ifdef CROSSPOINT_DEV_API
 bool ActivityManager::devRunReaderSync() {
   // The name identifies the concrete type (RTTI is off in firmware builds).
