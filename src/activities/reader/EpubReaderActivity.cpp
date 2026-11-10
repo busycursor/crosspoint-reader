@@ -675,6 +675,13 @@ void EpubReaderActivity::openClippings() {
 }
 
 void EpubReaderActivity::loop() {
+#ifdef CROSSPOINT_DEV_API
+  if (devSyncRequested && epub) {
+    devSyncRequested = false;
+    launchKOReaderSync();
+    return;
+  }
+#endif
   if (loadFailurePopup.isActive()) {
     loadFailurePopup.handleInput(mappedInput, [this] { requestUpdate(); });
     return;

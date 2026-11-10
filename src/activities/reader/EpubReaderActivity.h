@@ -249,10 +249,14 @@ class EpubReaderActivity final : public ReaderActivity {
   void renderBook() override;
   void onEndOfBookRendered() override;
 
+#ifdef CROSSPOINT_DEV_API
+  bool devSyncRequested = false;
+#endif
  public:
 #ifdef CROSSPOINT_DEV_API
-  // Dev API: run the KOReader sync for the open book, as the reader menu does.
-  void devRunSync() { launchKOReaderSync(); }
+  // Dev API: run the KOReader sync for the open book on the next loop(), the
+  // place the reader's own sync triggers run it.
+  void devRunSync() { devSyncRequested = true; }
 #endif
   explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath,
                               bool allowFastInitialRefresh)
