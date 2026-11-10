@@ -109,7 +109,7 @@ class HaWsSession final : public HaSession {
     }
     std::string host;
     uint16_t port = 0;
-    if (!ha::splitUrl(ha::config().url, host, port)) {
+    if (!ha::resolvedHost(host, port)) {
       setStatus(ha::LinkStatus::NoAnswer);
       return;
     }

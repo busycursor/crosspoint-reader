@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <HTTPClient.h>
+#include <HaLive.h>
 #include <Logging.h>
 #include <NetworkClient.h>
 #include <WiFi.h>
@@ -13,6 +14,8 @@
 #include "homeassistant/HaConfigStore.h"
 #include "network/WifiJoin.h"
 #ifndef SIMULATOR
+#include <ESPmDNS.h>
+
 #include "network/WifiPowerSaveGuard.h"
 #endif
 
@@ -35,15 +38,49 @@ ha::EntityState resultState;
 uint32_t generation = 0;  // bumped on sleep; a worker from before drops its result
 
 std::mutex joinMtx;  // the link worker and the Control session may both join
+std::mutex hostMtx;
+std::string cachedHost;  // resolved address of a ".local" host; cleared with Wi-Fi
+
+constexpr uint32_t kMdnsTimeoutMs = 2000;
 
 }  // namespace
+
+bool ha::resolvedHost(std::string& host, uint16_t& port) {
+  if (!splitUrl(config().url, host, port)) return false;
+  constexpr const char* kLocal = ".local";
+  if (host.size() <= 6 || host.compare(host.size() - 6, 6, kLocal) != 0) return true;
+#ifdef SIMULATOR
+  return true;  // the host OS resolves .local names
+#else
+  std::lock_guard<std::mutex> lock(hostMtx);
+  if (!cachedHost.empty()) {
+    host = cachedHost;
+    return true;
+  }
+  const std::string name = host.substr(0, host.size() - 6);
+  MDNS.begin("crosspoint-ha");
+  const IPAddress ip = MDNS.queryHost(name.c_str(), kMdnsTimeoutMs);
+  MDNS.end();
+  if (ip == IPAddress(0, 0, 0, 0)) {
+    LOG_ERR("HA", "HA: %s did not resolve over mDNS", host.c_str());
+    return false;
+  }
+  cachedHost = ip.toString().c_str();
+  LOG_INF("HA", "HA: %s is %s", host.c_str(), cachedHost.c_str());
+  host = cachedHost;
+  return true;
+#endif
+}
 
 int ha::restRequest(const char* method, const std::string& path, const std::string& body, std::string* response) {
   NetworkClient client;
   HTTPClient http;
   http.setConnectTimeout(kHttpTimeoutMs);
   http.setTimeout(kHttpTimeoutMs);
-  const std::string url = ha::config().url + path;
+  std::string host;
+  uint16_t port = 0;
+  if (!ha::resolvedHost(host, port)) return -1;
+  const std::string url = "http://" + host + ":" + std::to_string(port) + path;
   http.begin(client, url.c_str());
   http.addHeader("Authorization", (std::string("Bearer ") + ha::bearerToken()).c_str());
   int code;
@@ -175,9 +212,15 @@ void HaLink::tick() {
   LOG_INF("HA", "HA: Wi-Fi idle, turning it off");
   WiFi.disconnect(false);
   WiFi.mode(WIFI_OFF);
+  std::lock_guard<std::mutex> lock(hostMtx);
+  cachedHost.clear();
 }
 
 void HaLink::onSleep() {
+  {
+    std::lock_guard<std::mutex> hostLock(hostMtx);
+    cachedHost.clear();
+  }
   std::lock_guard<std::mutex> lock(mtx);
   policy.noteSleep();
   ++generation;

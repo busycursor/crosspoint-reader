@@ -34,4 +34,8 @@ namespace ha {
 // One REST request to the configured HA (bearer token set). Returns the HTTP
 // code, <= 0 on failure; response gets the body when given.
 int restRequest(const char* method, const std::string& path, const std::string& body, std::string* response);
+// Host and port to connect to: the config's, with a ".local" host resolved
+// over mDNS on the device (cached until Wi-Fi goes down). False when it does
+// not resolve.
+bool resolvedHost(std::string& host, uint16_t& port);
 }  // namespace ha
