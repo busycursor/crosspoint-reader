@@ -25,8 +25,10 @@ class UiAppHost {
   // the screens used to pick individually): FreeInkApp, Screen and Frame are
   // capacity-templated, so per-screen capacities each minted a fresh copy of
   // that code in flash. The wider interaction buffer costs ~300 bytes of RAM
-  // per live host, bounded by the activity stack depth.
-  using UiApp = freeink::ui::FreeInkApp<24, 6>;
+  // per live host, bounded by the activity stack depth. Sized for the reader's
+  // swipe-down sheet with Home Assistant rows (about 34 interactions and 14
+  // handlers), the largest screen.
+  using UiApp = freeink::ui::FreeInkApp<40, 16>;
   using UiScreen = UiApp::ScreenType;
 
   explicit UiAppHost(const GfxRenderer& renderer);

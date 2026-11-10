@@ -1,5 +1,9 @@
 #pragma once
 
+#include <HaConfig.h>
+#include <HaIdlePolicy.h>
+#include <HaState.h>
+
 #include "CrossPointSettings.h"
 #include "activities/Activity.h"
 #include "components/UiAppHost.h"
@@ -64,6 +68,34 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   void persistLightSettings();
   void close();
 
+  // Home Assistant rows (when /homeassistant.json is set up): the config's
+  // lights as slider rows, the rest as one row of buttons. They draw from the
+  // cached states; nothing touches Wi-Fi until one is used.
+  static constexpr int kMaxHaLights = static_cast<int>(ha::kMaxSheetLights);
+  int haLights[kMaxHaLights] = {};  // indexes into ha::config().sheet
+  int haLightCount = 0;
+  int haButtons[ha::kMaxSheetButtons] = {};
+  int haButtonCount = 0;
+  uint8_t haLevel[kMaxHaLights] = {};  // slider positions, 0..100
+  int haDragRow = -1;                  // light row being dragged
+  std::string haPendingEntity;         // call in flight: show it as working
+  ha::ServiceCall haQueued;            // sent once the link is free (latest wins)
+  bool haHasQueued = false;
+  ha::LinkStatus haShownStatus = ha::LinkStatus::Idle;
+  int16_t haTop = 0, haBottom = 0;  // the rows' band, faded when HA is unreachable
+
+  static void onHaSliderEvent(const freeink::ui::ActionEvent& event, void* user);
+  static void onHaStepEvent(const freeink::ui::ActionEvent& event, void* user);
+  static void onHaToggleEvent(const freeink::ui::ActionEvent& event, void* user);
+  static void onHaButtonEvent(const freeink::ui::ActionEvent& event, void* user);
+  void loadHaRows();
+  void addHaRows(UiScreen& screen);
+  int haRowsHeight(int16_t lineHeight, int16_t spaceSm, int16_t spaceMd) const;
+  void haSend(const ha::ServiceCall& call);
+  void pollHa();
+  bool haUnreachable() const;
+  void fadeHaRows();
+
   // One-shot: a tile that rewrote the whole frame (night mode) re-drives it
   // with the ghost-cleanup waveform on the next render. The "refresh" tile does
   // not use this — it closes the panel and promotes the repaint underneath
@@ -77,4 +109,5 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   void loop() override;
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
+  bool allowsHomeAssistantWifiOff() const override { return true; }
 };

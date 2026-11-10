@@ -18,6 +18,9 @@
 #include "components/icons/customListIcons.h"
 #include "components/icons/listIcons.h"
 #include "components/icons/readerToolbarIcons.h"
+#include "homeassistant/HaConfigStore.h"
+#include "homeassistant/HaLink.h"
+#include "homeassistant/HaStateCache.h"
 #include "util/SlideSwitch.h"
 
 namespace fui = freeink::ui;
@@ -29,6 +32,14 @@ constexpr fui::ActionId ACTION_TOGGLE = 3;
 constexpr fui::ActionId ACTION_BRIGHTNESS_STEP = 4;
 constexpr fui::ActionId ACTION_WARMTH_STEP = 5;
 constexpr fui::ActionId ACTION_TILE = 6;  // value = tile index
+// Home Assistant: one slider/step id per light row (sliders carry no value).
+constexpr fui::ActionId ACTION_HA_SLIDER = 10;  // +row
+constexpr fui::ActionId ACTION_HA_DOWN = 20;    // value = row
+constexpr fui::ActionId ACTION_HA_UP = 21;      // value = row
+constexpr fui::ActionId ACTION_HA_TOGGLE = 22;  // value = row
+constexpr fui::ActionId ACTION_HA_BUTTON = 23;  // value = button
+// A step sends a call, so step in tens, not the frontlight's single percent.
+constexpr int HA_BRIGHTNESS_STEP = 10;
 
 // iOS-style geometry. The panel is a card hanging from the top of the screen:
 // a grabber, full-width slider pills, then a row of quick-setting icons. The chrome
@@ -82,6 +93,14 @@ void FrontlightPanelActivity::onEnter() {
   app.on(ACTION_BRIGHTNESS_STEP, &FrontlightPanelActivity::onBrightnessStepEvent, this);
   app.on(ACTION_WARMTH_STEP, &FrontlightPanelActivity::onWarmthStepEvent, this);
   app.on(ACTION_TILE, &FrontlightPanelActivity::onTileEvent, this);
+  loadHaRows();
+  for (int i = 0; i < haLightCount; ++i) {
+    app.on(static_cast<fui::ActionId>(ACTION_HA_SLIDER + i), &FrontlightPanelActivity::onHaSliderEvent, this);
+  }
+  app.on(ACTION_HA_DOWN, &FrontlightPanelActivity::onHaStepEvent, this);
+  app.on(ACTION_HA_UP, &FrontlightPanelActivity::onHaStepEvent, this);
+  app.on(ACTION_HA_TOGGLE, &FrontlightPanelActivity::onHaToggleEvent, this);
+  app.on(ACTION_HA_BUTTON, &FrontlightPanelActivity::onHaButtonEvent, this);
   app.setScreen(&FrontlightPanelActivity::panelScreen, this);
   requestUpdate();
 }
@@ -235,6 +254,7 @@ bool FrontlightPanelActivity::handleHomeGesture() {
 }
 
 void FrontlightPanelActivity::loop() {
+  pollHa();
   const auto touch = routeTouch(mappedInput, false, /*routeHeld=*/true);
   if (touch.routed) {
     if (app.invalidated()) requestUpdate();
@@ -261,6 +281,11 @@ void FrontlightPanelActivity::loop() {
   if (draggingSlider) {
     if (!touch.snap.touchHeld) {
       draggingSlider = false;
+      if (haDragRow >= 0) {
+        const auto& entry = ha::config().sheet[haLights[haDragRow]];
+        haSend(ha::brightnessCall(entry.entity, haLevel[haDragRow]));
+        haDragRow = -1;
+      }
       cleanRefreshPending = true;
       requestUpdate();
     }
@@ -299,6 +324,7 @@ int FrontlightPanelActivity::computePanelBottom() const {
     }
     y += tokens.spaceSm;
   }
+  y += haRowsHeight(lineHeight, tokens.spaceSm, tokens.spaceMd);
   // Icons are touch targets, so a buttons-only board gets no row and the
   // sheet is exactly the frontlight controls.
   if (mappedInput.hasTouch()) y += kQuickControlSize;
@@ -385,6 +411,8 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
     screen.spacer(theme.spaceSm);
   }
 
+  addHaRows(screen);
+
   // Match the reader toolbar's equal icon slots; the full slot is the touch target.
   if (mappedInput.hasTouch()) {
     const int tileCount = bleturner::status().compiledIn ? kTileCount : kTileCount - 1;
@@ -441,6 +469,7 @@ void FrontlightPanelActivity::render(RenderLock&&) {
   // fui::sheet draws the card body, its bottom rule, and the grabber during
   // renderUi(); the battery band at the card's top is part of the screen build.
   renderUi();
+  fadeHaRows();
 
   // A tile that rewrote the whole frame (night mode) re-drives every pixel
   // once; ordinary repaints stay on the fast path. HALF: strong enough to
@@ -449,4 +478,211 @@ void FrontlightPanelActivity::render(RenderLock&&) {
   // or the next scheduled clean refresh.
   renderer.displayBuffer(cleanRefreshPending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanRefreshPending = false;
+}
+
+// --- Home Assistant rows -----------------------------------------------------
+
+void FrontlightPanelActivity::loadHaRows() {
+  haLightCount = haButtonCount = 0;
+  if (!ha::enabled() || !mappedInput.hasTouch()) return;
+  const auto& sheet = ha::config().sheet;
+  for (int i = 0; i < static_cast<int>(sheet.size()); ++i) {
+    if (sheet[i].kind == ha::SheetKind::Light) {
+      if (haLightCount < kMaxHaLights) haLights[haLightCount++] = i;
+    } else if (haButtonCount < static_cast<int>(ha::kMaxSheetButtons)) {
+      haButtons[haButtonCount++] = i;
+    }
+  }
+  const auto& cache = ha::stateCache();
+  for (int r = 0; r < haLightCount; ++r) {
+    const auto it = cache.find(sheet[haLights[r]].entity);
+    haLevel[r] = it != cache.end() && it->second.brightnessPct > 0 ? static_cast<uint8_t>(it->second.brightnessPct) : 0;
+  }
+  haShownStatus = haLink.status();
+}
+
+int FrontlightPanelActivity::haRowsHeight(const int16_t lineHeight, const int16_t /*spaceSm*/,
+                                          const int16_t spaceMd) const {
+  if (haLightCount == 0 && haButtonCount == 0) return 0;
+  int y = lineHeight + spaceMd;  // section title, or why HA is unreachable
+  y += haLightCount * (lineHeight + spaceMd + kSliderRowHeight + 2 * spaceMd);
+  if (haButtonCount > 0) y += kQuickControlSize + spaceMd;
+  return y;
+}
+
+bool FrontlightPanelActivity::haUnreachable() const {
+  return haShownStatus == ha::LinkStatus::NoNetwork || haShownStatus == ha::LinkStatus::NoAnswer ||
+         haShownStatus == ha::LinkStatus::TokenRejected;
+}
+
+void FrontlightPanelActivity::addHaRows(UiScreen& screen) {
+  if (haLightCount == 0 && haButtonCount == 0) {
+    haTop = haBottom = 0;
+    return;
+  }
+  const auto& theme = screen.theme();
+  const auto& sheet = ha::config().sheet;
+  const auto& cache = ha::stateCache();
+  const auto nameOf = [&](const ha::SheetEntry& e) -> const char* {
+    if (!e.name.empty()) return e.name.c_str();
+    const auto it = cache.find(e.entity);
+    return it != cache.end() && !it->second.name.empty() ? it->second.name.c_str() : e.entity.c_str();
+  };
+
+  const char* title = tr(STR_HA_TITLE);
+  if (haShownStatus == ha::LinkStatus::NoNetwork) title = tr(STR_HA_NO_NETWORK);
+  if (haShownStatus == ha::LinkStatus::NoAnswer) title = tr(STR_HA_NO_ANSWER);
+  if (haShownStatus == ha::LinkStatus::TokenRejected) title = tr(STR_HA_TOKEN_REJECTED);
+  const fui::Rect titleRow = screen.takeTop(screen.target().lineHeight(theme.smallText.font), theme.spaceMd);
+  screen.target().text(titleRow, title, theme.smallText);
+  // The fade covers the controls, not the line saying why.
+  haTop = static_cast<int16_t>(titleRow.y + titleRow.height + theme.spaceMd);
+
+  for (int r = 0; r < haLightCount; ++r) {
+    const auto& entry = sheet[haLights[r]];
+    const auto it = cache.find(entry.entity);
+    const bool seen = it != cache.end();  // never seen: no value until the first call
+    const bool known =
+        seen && !it->second.state.empty() && it->second.state != "unavailable" && it->second.state != "unknown";
+    const bool on = known && it->second.state == "on";
+    char value[16];
+    if (entry.entity == haPendingEntity) {
+      snprintf(value, sizeof(value), "...");
+    } else if (!seen) {
+      value[0] = '\0';
+    } else if (!known) {
+      snprintf(value, sizeof(value), "%s", tr(STR_HA_UNAVAILABLE));
+    } else if (on) {
+      snprintf(value, sizeof(value), "%u%%", static_cast<unsigned>(haLevel[r]));
+    } else {
+      snprintf(value, sizeof(value), "%s", tr(STR_STATE_OFF));
+    }
+    rowProps.label = nameOf(entry);
+    rowProps.value = value;
+    rowProps.sliderValue = on || haDragRow == r ? haLevel[r] : 0;
+    rowProps.sliderAction = static_cast<fui::ActionId>(ACTION_HA_SLIDER + r);
+    rowProps.decrement = ACTION_HA_DOWN;
+    rowProps.increment = ACTION_HA_UP;
+    rowProps.decrementValue = rowProps.incrementValue = static_cast<int16_t>(r);
+    rowProps.toggleAction = ACTION_HA_TOGGLE;
+    rowProps.toggleValue = static_cast<int16_t>(r);
+    rowProps.toggleIcon = fui::bitmapFromIcon(on ? icon_sun_filled_32 : icon_sun_32);
+    screen.sliderRow(rowProps, kSliderRowHeight);
+    screen.spacer(theme.spaceMd);
+  }
+
+  if (haButtonCount > 0) {
+    const fui::Rect row = screen.takeTop(kQuickControlSize, theme.spaceMd);
+    const fui::Paint ink = fui::Paint::solid(fui::Color::Black);
+    for (int b = 0; b < haButtonCount; ++b) {
+      const auto& entry = sheet[haButtons[b]];
+      const auto it = cache.find(entry.entity);
+      const bool on = it != cache.end() && it->second.state == "on";
+      const int16_t left = static_cast<int16_t>(row.x + row.width * b / haButtonCount);
+      const int16_t right = static_cast<int16_t>(row.x + row.width * (b + 1) / haButtonCount);
+      const fui::Rect slot{static_cast<int16_t>(left + theme.spaceSm / 2), row.y,
+                           static_cast<int16_t>(right - left - theme.spaceSm), row.height};
+      if (on) {
+        screen.target().fill(slot, ink, theme.controlRadius);
+      } else {
+        screen.target().stroke(slot, ink, 2, theme.controlRadius);
+      }
+      fui::TextStyle label = theme.smallText;
+      label.align = fui::TextAlign::Center;
+      label.maxLines = 2;
+      label.color = on ? fui::Color::White : fui::Color::Black;
+      const char* text = entry.entity == haPendingEntity ? "..." : nameOf(entry);
+      const fui::Rect textRect{
+          static_cast<int16_t>(slot.x + 4),
+          static_cast<int16_t>(slot.y + (slot.height - screen.target().lineHeight(label.font)) / 2),
+          static_cast<int16_t>(slot.width - 8), screen.target().lineHeight(label.font)};
+      screen.target().text(textRect, text, label);
+      screen.frame().hit(slot, ACTION_HA_BUTTON, static_cast<int16_t>(b), fui::InputTouch);
+    }
+  }
+  haBottom = screen.contentRect().y;
+}
+
+void FrontlightPanelActivity::fadeHaRows() {
+  if (!haUnreachable() || haBottom <= haTop) return;
+  // Every other pixel white: the rows read as grayed out but stay legible.
+  const int width = renderer.getScreenWidth();
+  for (int y = haTop; y < haBottom; ++y) {
+    for (int x = (y & 1); x < width; x += 2) renderer.drawPixel(x, y, false);
+  }
+}
+
+void FrontlightPanelActivity::haSend(const ha::ServiceCall& call) {
+  if (haLink.submit(call)) {
+    haPendingEntity = call.entityId;
+    haHasQueued = false;
+  } else {
+    haQueued = call;
+    haHasQueued = true;
+  }
+  haShownStatus = haLink.status();
+  requestUpdate();
+}
+
+void FrontlightPanelActivity::pollHa() {
+  if (haLightCount == 0 && haButtonCount == 0) return;
+  bool changed = false;
+  if (!haPendingEntity.empty() && !haLink.busy()) {
+    std::string entity;
+    ha::EntityState fresh;
+    if (haLink.takeResult(entity, fresh)) {
+      ha::updateCachedState(entity, fresh);
+      ha::saveStateCacheIfDirty();
+      for (int r = 0; r < haLightCount; ++r) {
+        if (ha::config().sheet[haLights[r]].entity == entity && fresh.brightnessPct > 0) {
+          haLevel[r] = static_cast<uint8_t>(fresh.brightnessPct);
+        }
+      }
+    }
+    haPendingEntity.clear();
+    changed = true;
+  }
+  if (haHasQueued && !haLink.busy()) {
+    haSend(haQueued);
+    return;
+  }
+  const ha::LinkStatus status = haLink.status();
+  if (status != haShownStatus && status != ha::LinkStatus::Working) {
+    haShownStatus = status;
+    changed = true;
+  }
+  if (changed) requestUpdate();
+}
+
+void FrontlightPanelActivity::onHaSliderEvent(const fui::ActionEvent& event, void* user) {
+  auto* self = static_cast<FrontlightPanelActivity*>(user);
+  if (event.dragPermille < 0) return;
+  const int row = event.action - ACTION_HA_SLIDER;
+  if (row < 0 || row >= self->haLightCount) return;
+  self->haDragRow = row;
+  self->haLevel[row] = percentFromPermille(event.dragPermille);
+}
+
+void FrontlightPanelActivity::onHaStepEvent(const fui::ActionEvent& event, void* user) {
+  auto* self = static_cast<FrontlightPanelActivity*>(user);
+  const int row = event.value;
+  if (row < 0 || row >= self->haLightCount) return;
+  const int step = event.action == ACTION_HA_UP ? HA_BRIGHTNESS_STEP : -HA_BRIGHTNESS_STEP;
+  const int next = std::max(0, std::min(100, static_cast<int>(self->haLevel[row]) + step));
+  self->haLevel[row] = static_cast<uint8_t>(next);
+  self->haSend(ha::brightnessCall(ha::config().sheet[self->haLights[row]].entity, next));
+}
+
+void FrontlightPanelActivity::onHaToggleEvent(const fui::ActionEvent& event, void* user) {
+  auto* self = static_cast<FrontlightPanelActivity*>(user);
+  if (event.value < 0 || event.value >= self->haLightCount) return;
+  ha::ServiceCall call;
+  if (ha::tapAction(ha::config().sheet[self->haLights[event.value]].entity, call)) self->haSend(call);
+}
+
+void FrontlightPanelActivity::onHaButtonEvent(const fui::ActionEvent& event, void* user) {
+  auto* self = static_cast<FrontlightPanelActivity*>(user);
+  if (event.value < 0 || event.value >= self->haButtonCount) return;
+  ha::ServiceCall call;
+  if (ha::tapAction(ha::config().sheet[self->haButtons[event.value]].entity, call)) self->haSend(call);
 }
