@@ -242,9 +242,11 @@ def make_client(args) -> Client:
 
 # --- framebuffer -> PNG -------------------------------------------------------------
 
-def framebuffer_to_rows(buf: bytes, width: int, height: int, orientation: int) -> tuple[int, int, list[bytes]]:
-    """Map the 1-bit panel buffer (1 = white, MSB first) to logical rows, mirroring
-    rotateCoordinates() in lib/GfxRenderer/GfxRenderer.cpp."""
+def framebuffer_to_rows(buf: bytes, width: int, height: int, orientation: int,
+                        gray8: bool = False) -> tuple[int, int, list[bytes]]:
+    """Map the panel buffer to logical rows, mirroring rotateCoordinates() in
+    lib/GfxRenderer/GfxRenderer.cpp. 1-bit (1 = white, MSB first), or one
+    luminance byte per pixel when gray8."""
     wb = width // 8
     portrait = orientation in (0, 2)
     lw, lh = (height, width) if portrait else (width, height)
@@ -263,7 +265,10 @@ def framebuffer_to_rows(buf: bytes, width: int, height: int, orientation: int) -
         row = bytearray(lw)
         for x in range(lw):
             px, py = phys(x, y)
-            row[x] = 255 if (buf[py * wb + px // 8] >> (7 - px % 8)) & 1 else 0
+            if gray8:
+                row[x] = buf[py * width + px]
+            else:
+                row[x] = 255 if (buf[py * wb + px // 8] >> (7 - px % 8)) & 1 else 0
         rows.append(bytes(row))
     return lw, lh, rows
 
@@ -279,12 +284,13 @@ def write_png(path: Path, width: int, height: int, rows: list[bytes]) -> None:
     path.write_bytes(png)
 
 
-def screenshot(c: Client, out: Path) -> Path:
-    code, headers, data = c.request("GET", "/dev/screen")
+def screenshot(c: Client, out: Path, gray: bool = False) -> Path:
+    code, headers, data = c.request("GET", "/dev/screen", query={"gray": "1"} if gray else None)
     if code != 200:
         raise ApiError(f"screen: HTTP {code} {data[:200]!r}")
     h = {k.lower(): v for k, v in headers.items()}
-    lw, lh, rows = framebuffer_to_rows(data, int(h["x-width"]), int(h["x-height"]), int(h["x-orientation"]))
+    lw, lh, rows = framebuffer_to_rows(data, int(h["x-width"]), int(h["x-height"]), int(h["x-orientation"]),
+                                       gray8=h.get("x-format") == "gray8")
     write_png(out, lw, lh, rows)
     return out
 
@@ -538,6 +544,7 @@ def main() -> None:
     sub.add_parser("info")
     s = sub.add_parser("screen")
     s.add_argument("-o", "--output", default=str(QA_DIR / "screen.png"))
+    s.add_argument("--gray", action="store_true", help="simulator only: include gray levels")
     s = sub.add_parser("logs")
     s.add_argument("--since", type=int, default=0)
     s.add_argument("--grep")
@@ -595,7 +602,7 @@ def main() -> None:
         elif args.cmd == "info":
             show(c.json("GET", "/dev/info"))
         elif args.cmd == "screen":
-            print(screenshot(c, Path(args.output)))
+            print(screenshot(c, Path(args.output), args.gray))
         elif args.cmd == "logs":
             cmd_logs(c, args)
         elif args.cmd == "wait":

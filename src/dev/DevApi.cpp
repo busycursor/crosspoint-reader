@@ -45,6 +45,7 @@
 
 #ifdef SIMULATOR
 #include <HalSystem.h>
+#include <SimDisplayCapture.h>
 #else
 #include "network/FirmwareFlasher.h"
 #endif
@@ -249,8 +250,26 @@ void getInfo(const Request&, Response& res) {
 
 // Raw 1-bit framebuffer in panel order (1 = white, MSB first). The host tool
 // rotates it using X-Orientation.
-void getScreen(const Request&, Response& res) {
+void getScreen(const Request& req, Response& res) {
   int orientation = 0;
+#ifdef SIMULATOR
+  // ?gray=1: the frame as shown, gray planes included (8 bits per pixel).
+  if (req.arg("gray") == "1") {
+    res.body.resize(static_cast<size_t>(HalDisplay::DISPLAY_WIDTH) * HalDisplay::DISPLAY_HEIGHT);
+    if (!simCopyPresentedGray(reinterpret_cast<uint8_t*>(&res.body[0]), res.body.size())) {
+      res.message(503, "no frame yet");
+      return;
+    }
+    res.type = "application/octet-stream";
+    res.headers.push_back({"X-Width", std::to_string(HalDisplay::DISPLAY_WIDTH)});
+    res.headers.push_back({"X-Height", std::to_string(HalDisplay::DISPLAY_HEIGHT)});
+    res.headers.push_back({"X-Orientation", std::to_string(static_cast<int>(renderer.getOrientation()))});
+    res.headers.push_back({"X-Format", "gray8"});
+    return;
+  }
+#else
+  (void)req;
+#endif
   {
     RenderLock lock;
     const uint8_t* buf = display.getFrameBuffer();
