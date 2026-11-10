@@ -46,6 +46,7 @@
 #include "components/UITheme.h"
 #include "dev/DevApi.h"
 #include "fontIds.h"
+#include "homeassistant/HaConfigStore.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
@@ -671,6 +672,7 @@ void setup() {
   OPDS_STORE.loadFromFile();
   OPDS_TOKENS.loadFromFile();
   LCP_PASSPHRASES.loadFromFile();
+  ha::loadConfigStore();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
   pluginevents::refreshSubscriptions();
