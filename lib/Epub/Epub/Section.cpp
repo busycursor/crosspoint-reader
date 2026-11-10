@@ -10,8 +10,10 @@
 
 #include <algorithm>
 
+#include "CoverPageFallback.h"
 #include "Epub/css/CssParser.h"
 #include "Page.h"
+#include "converters/ImageDecoderFactory.h"
 #include "hyphenation/Hyphenator.h"
 #include "parsers/ChapterHtmlSlimParser.h"
 
@@ -81,7 +83,8 @@ namespace {
 // v71: Focus split offsets follow the visual run order for RTL words.
 // v72: Make ruby rendering closer to how Chromium renders ruby by default.
 // v73: TrueType vector fonts load and advance .notdef for missing glyphs.
-constexpr uint8_t SECTION_FILE_VERSION = 73;
+// v74: A blank first page shows the metadata cover (CoverPageFallback).
+constexpr uint8_t SECTION_FILE_VERSION = 74;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
@@ -426,6 +429,21 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   const size_t lastSlash = localPath.find_last_of('/');
   ctx->contentBase = (lastSlash != std::string::npos) ? localPath.substr(0, lastSlash + 1) : "";
   ctx->imageBasePath = epub->getCachePath() + "/img_" + std::to_string(spineIndex) + "_";
+
+  // A first page whose cover image reference was stripped renders blank; show
+  // the metadata cover there instead. The stand-in replaces the HTML that is
+  // about to be parsed (and the HTML cache), so later builds reuse it.
+  if (spineIndex == 0) {
+    const std::string coverHref = epub->getCoverItemHref();
+    std::string html;
+    if (!coverHref.empty() && ImageDecoderFactory::isFormatSupported(coverHref) &&
+        Storage.readFileToString("SCT", ctx->parsePath, 8193, html) && cover_fallback::isBlankPage(html)) {
+      const std::string standIn = cover_fallback::standInPage(ctx->contentBase, coverHref);
+      if (Storage.writeFile(ctx->parsePath.c_str(), String(standIn.c_str()))) {
+        LOG_INF("SCT", "Blank cover page; showing metadata cover %s", coverHref.c_str());
+      }
+    }
+  }
 
   if (spec.embeddedStyle) {
     ctx->cssParser = epub->getCssParser();
