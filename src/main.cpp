@@ -44,6 +44,7 @@
 #include "activities/ActivityManager.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
+#include "dev/DevApi.h"
 #include "fontIds.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
@@ -844,6 +845,7 @@ void setup() {
   }
 
   allowSleepAt = millis() + 2000;
+  dev_api::begin([] { enterDeepSleep(); });
 }
 
 void loop() {
@@ -898,6 +900,11 @@ void loop() {
 
   renderer.setFadingFix(SETTINGS.fadingFix);
 
+  // Dev builds: serve the control API, then apply what it queued, after this
+  // frame's input update so an injected click is seen like a real one.
+  dev_api::loop();
+  dev_api::applyPending();
+
   // The ROM console does not depend on Arduino USB CDC's connection state.
   if ((Serial || FREEINK_LOG_TRANSPORT == FREEINK_LOG_TRANSPORT_ROM_PRINTF) && millis() - lastMemPrint >= 10000) {
     const auto heap = HalMemory::getInternalHeap();
@@ -911,8 +918,9 @@ void loop() {
     lastMemPrint = millis();
   }
 
-  // Handle incoming serial commands,
+  // Handle incoming serial commands (dev builds: the dev API owns serial input)
   // nb: we use logSerial from logging to avoid deprecation warnings
+#ifndef CROSSPOINT_DEV_API
   if (logSerial.available() > 0) {
     String line = logSerial.readStringUntil('\n');
     if (line.startsWith("CMD:")) {
@@ -927,11 +935,12 @@ void loop() {
       }
     }
   }
+#endif
 
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
   if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || halTiltSensor.hadActivity() ||
-      remoteActed || activityManager.preventAutoSleep()) {
+      remoteActed || activityManager.preventAutoSleep() || dev_api::keepAwake()) {
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }

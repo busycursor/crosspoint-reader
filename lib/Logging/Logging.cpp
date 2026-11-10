@@ -19,6 +19,8 @@ RTC_NOINIT_ATTR size_t logHead = 0;
 RTC_NOINIT_ATTR uint32_t rtcLogMagic;
 static constexpr uint32_t LOG_RTC_MAGIC = 0xDEADBEEF;
 
+void (*logLineTap)(const char* line) = nullptr;
+
 void addToLogRingBuffer(const char* message) {
   // Add the message to the ring buffer, overwriting old messages if necessary.
   // If the magic is wrong or logHead is out of range (RTC_NOINIT_ATTR garbage
@@ -72,6 +74,7 @@ void logPrintf(const char* level, const char* origin, const char* format, ...) {
   logSerial.print(buf);
 #endif
   addToLogRingBuffer(buf);
+  if (logLineTap) logLineTap(buf);
 }
 
 std::string getLastLogs() {

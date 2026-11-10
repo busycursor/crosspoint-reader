@@ -311,6 +311,10 @@ void ActivityManager::goToLibrary() {
   replaceActivity(std::move(activity));
 }
 
+std::string ActivityManager::currentActivityName() const {
+  return currentActivity ? currentActivity->name : std::string();
+}
+
 void ActivityManager::goToShelfSync() {
   const auto& servers = OPDS_STORE.getServers();
   if (servers.empty()) {

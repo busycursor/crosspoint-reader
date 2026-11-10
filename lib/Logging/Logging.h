@@ -66,6 +66,8 @@ void logPrintf(const char* level, const char* origin, const char* format, ...);
 #endif
 
 std::string getLastLogs();
+// Optional observer of every formatted log line (dev API). Set once at boot.
+extern void (*logLineTap)(const char* line);
 void clearLastLogs();
 // Validates the RTC log state (magic word + logHead range). Returns true if
 // corruption was detected (magic mismatch or logHead out of range), meaning

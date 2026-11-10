@@ -32,6 +32,16 @@ struct Frame;
 // 0 = transparent, 1-16 = gray levels (white to black)
 enum Color : uint8_t { Clear = 0x00, White = 0x01, LightGray = 0x05, DarkGray = 0x0A, Black = 0x10 };
 
+// Optional observer of what the renderer draws (dev API): text drawn between a
+// clear (or the first strip of a strip pass) and a display refresh is one
+// screen. Text can repeat across strips and passes. Set once at boot; null = off.
+struct GfxScreenTap {
+  void (*onClear)();
+  void (*onText)(int x, int y, const char* text);
+  void (*onDisplay)();
+};
+extern const GfxScreenTap* gfxScreenTap;
+
 class GfxRenderer {
  public:
   enum RenderMode { BW, GRAYSCALE_LSB, GRAYSCALE_MSB };

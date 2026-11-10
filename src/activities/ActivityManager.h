@@ -93,6 +93,8 @@ class ActivityManager {
   void goToLibrary();
   void goToBrowser();
   void goToShelfSync();
+  // Name of the foreground activity (e.g. "Home"); empty before boot finishes.
+  std::string currentActivityName() const;
   void goToPlugins(bool showOpds);
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   void goToSleep(bool fromTimeout = false);

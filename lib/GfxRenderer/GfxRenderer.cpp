@@ -17,6 +17,8 @@
 #include "FontCacheManager.h"
 #include "GlyphBitmap.h"
 
+const GfxScreenTap* gfxScreenTap = nullptr;
+
 namespace {
 // Synthesized small caps: lowercase letters draw as capitals at roughly x-height.
 constexpr int SMALL_CAPS_SCALE_NUM = 3;
@@ -700,6 +702,7 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
   if (text == nullptr || *text == '\0') {
     return;
   }
+  if (gfxScreenTap) gfxScreenTap->onText(x, y, text);
 
   // Route non-Latin strings to the fallback font when the requested font
   // lacks the glyphs (e.g. Chinese book titles drawn with a Latin UI font).
@@ -1716,6 +1719,7 @@ static unsigned long start_ms = 0;
 
 void GfxRenderer::clearScreen(const uint8_t color) const {
   start_ms = millis();
+  if (gfxScreenTap && !_stripActive) gfxScreenTap->onClear();
   if (_stripActive) {
     // Clear only the active band's scratch, not the shared framebuffer.
     memset(_stripBuf, color, static_cast<size_t>(panelWidthBytes) * _stripRows);
@@ -1725,6 +1729,7 @@ void GfxRenderer::clearScreen(const uint8_t color) const {
 }
 
 void GfxRenderer::beginStripTarget(uint8_t* scratch, int stripY0, int stripRows) const {
+  if (gfxScreenTap && stripY0 == 0) gfxScreenTap->onClear();  // a strip pass starts a new frame
   // Band is caller-guaranteed in-bounds (the reader's grayscale loop computes
   // it); assert catches future misuse in debug before it mis-renders or wraps
   // the downstream uint16_t cast in writeGrayscalePlaneStrip.
@@ -1773,11 +1778,13 @@ void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   refreshMode = applyPromotedRefresh(refreshMode);
+  if (gfxScreenTap) gfxScreenTap->onDisplay();
   display.displayBuffer(refreshMode, fadingFix);
 }
 
 void GfxRenderer::displayBufferAsync(HalDisplay::RefreshMode refreshMode) const {
   refreshMode = applyPromotedRefresh(refreshMode);
+  if (gfxScreenTap) gfxScreenTap->onDisplay();
   // The async path has no turn-off-screen hook, which the sunlight fading fix
   // relies on; keep those users on the blocking path.
   if (fadingFix) {
@@ -2419,11 +2426,13 @@ size_t GfxRenderer::getBufferSize() const { return frameBufferSize; }
 
 void GfxRenderer::displayGrayscaleBase(HalDisplay::RefreshMode fallback) const {
   absoluteGrayPlanes = false;
+  if (gfxScreenTap) gfxScreenTap->onDisplay();
   display.displayGrayscaleBase(applyPromotedRefresh(fallback), fadingFix);
 }
 
 bool GfxRenderer::displayGrayscaleBase(HalDisplay::GrayscaleMode mode, HalDisplay::RefreshMode fallback) const {
   absoluteGrayPlanes = false;
+  if (gfxScreenTap) gfxScreenTap->onDisplay();
   if (!display.displayGrayscaleBase(mode, promotedRefreshPending_ ? promotedRefresh_ : fallback, fadingFix))
     return false;
   promotedRefreshPending_ = false;
@@ -2456,6 +2465,7 @@ void GfxRenderer::copyGrayscaleLsbBuffers() const { display.copyGrayscaleLsbBuff
 void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuffers(frameBuffer); }
 
 void GfxRenderer::displayGrayBuffer() const {
+  if (gfxScreenTap) gfxScreenTap->onDisplay();
   display.displayGrayBuffer(fadingFix);
   absoluteGrayPlanes = false;
 }

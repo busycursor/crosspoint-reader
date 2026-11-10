@@ -22,11 +22,13 @@ void CatalogActivity::onEnter() {
 
 void CatalogActivity::onExit() {
   Activity::onExit();
+#ifndef CROSSPOINT_DEV_API  // dev builds keep Wi-Fi up for the control API
   if (WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(false);
     delay(30);
     silentRestart();
   }
+#endif
 }
 
 bool CatalogActivity::wifiConnected() {
