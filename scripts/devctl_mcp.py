@@ -170,7 +170,7 @@ def wifi(ssid: str | None = None, password_file: str | None = None, target: str 
 
 @mcp.tool()
 def build(which: str = "device") -> str:
-    """Build firmware: "device" (x4pro-dev), "sim" (simulator) or "all"."""
+    """Build firmware: "device" (x4pro), "sim" (simulator) or "all"."""
     devctl.build(["device", "sim"] if which == "all" else [which])
     return "built"
 

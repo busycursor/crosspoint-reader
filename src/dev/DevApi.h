@@ -1,11 +1,13 @@
 #pragma once
 
-// Development control API. A host tool reads the screen, logs, state and
+// Development control API, built into every firmware we make and switched at
+// runtime by Settings > Connectivity > Developer Mode. A host tool reads the screen, logs, state and
 // settings, drives screens and input, controls the frontlight and power,
 // edits SD files, sets Wi-Fi and flashes firmware. Two transports share one
 // set of endpoints: HTTP on port 8090 (bearer token) and USB serial (framed
-// lines, no token). Built only with -DCROSSPOINT_DEV_API (the x4pro-dev and
-// simulator environments); release builds compile none of it.
+// lines, no token). With Developer Mode off only the serial transport answers
+// (so a cable can turn the mode back on); Wi-Fi, the HTTP server and the
+// sleep hold are all off. Builds without -DCROSSPOINT_DEV_API compile none of it.
 //
 // Handlers never act on app state directly: they store one pending command
 // that main.cpp applies at a fixed point in loop(), the same place real input
@@ -22,6 +24,8 @@ void loop();
 void applyPending();
 // True while a host tool has been active recently; holds off auto-sleep.
 bool keepAwake();
+// Developer Mode is on: Wi-Fi stays up and network screens keep it on exit.
+bool enabled();
 // True while a host tool is changing things (any non-read request, or an
 // operation one started), and for a few seconds after. Drives the on-screen
 // "API active" badge so the user knows not to use the device meanwhile.
@@ -33,6 +37,7 @@ inline void begin(void (*)()) {}
 inline void loop() {}
 inline void applyPending() {}
 inline bool keepAwake() { return false; }
+inline bool enabled() { return false; }
 inline bool indicatorActive() { return false; }
 
 #endif

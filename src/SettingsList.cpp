@@ -197,6 +197,8 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
 
   // Persisted here; set from the Connectivity -> Plugins popup.
   emit(SettingInfo::Toggle(StrId::STR_PLUGINS, &CrossPointSettings::pluginsEnabled, "pluginsEnabled").withWebHidden());
+  emit(SettingInfo::Toggle(StrId::STR_DEVELOPER_MODE, &CrossPointSettings::developerMode, "developerMode")
+           .withWebHidden());
   emit(SettingInfo::Toggle(StrId::STR_PLUGIN_HUB, &CrossPointSettings::pluginHubPromptHidden, "pluginHubPromptHidden")
            .withWebHidden());
 

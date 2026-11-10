@@ -186,7 +186,7 @@ void BaseTheme::drawApiBadge(const GfxRenderer& renderer, const int x, const int
 // measured from the finished frame, so label fonts and widths do not matter:
 // scan the status strip from the right edge for the battery and percent text,
 // stopping at the first wide blank run after them.
-void BaseTheme::drawApiBadgeInHeader(const GfxRenderer& renderer) {
+bool BaseTheme::drawApiBadgeInHeader(const GfxRenderer& renderer, int& outX, int& outY, int& outSize) {
   const ThemeMetrics& metrics = UITheme::getInstance().getMetrics();
   const int width = renderer.getScreenWidth();
   // The label's digits can hang below the strip; scan one digit height further.
@@ -213,14 +213,18 @@ void BaseTheme::drawApiBadgeInHeader(const GfxRenderer& renderer) {
       break;
     }
   }
-  if (edge < 0) return;  // no battery drawn on this frame
+  if (edge < 0) return false;  // no battery drawn on this frame
 
   int size = inkBottom - inkTop + 1;
   if (size % 2 == 0) ++size;
   size = std::max(size, 9);
   const int x = batteryLeft ? edge + gap : edge - gap - size;
-  const int y = (inkTop + inkBottom) / 2 - size / 2;
-  drawApiBadge(renderer, x, std::max(0, y), size);
+  const int y = std::max(0, (inkTop + inkBottom) / 2 - size / 2);
+  drawApiBadge(renderer, x, y, size);
+  outX = x;
+  outY = y;
+  outSize = size;
+  return true;
 }
 
 void BaseTheme::drawCoverPlaceholder(const GfxRenderer& renderer, Rect rect) {

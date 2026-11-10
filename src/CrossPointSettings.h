@@ -373,6 +373,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // this disabled; settings migration enables it when pre-existing plugin files
   // are found so a firmware update never silently disables an existing setup.
   uint8_t pluginsEnabled = 0;
+  // Developer Mode: keeps Wi-Fi up for the control API (src/dev/DevApi.h),
+  // allows flashing over Wi-Fi and holds off sleep while a host tool works.
+  // Off by default; these cost battery.
+  uint8_t developerMode = 0;
   // User hid the Plugin Hub install row; cleared when plugins are turned back on.
   uint8_t pluginHubPromptHidden = 0;
   // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)

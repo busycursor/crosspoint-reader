@@ -24,6 +24,7 @@
 #include "clippings/ClippingSync.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"  // list icons for the compare rows
+#include "dev/DevApi.h"
 #include "fontIds.h"
 #include "network/WifiJoin.h"
 #include "network/WifiPowerSaveGuard.h"
@@ -487,13 +488,16 @@ void KOReaderSyncActivity::onEnter() {
 void KOReaderSyncActivity::onExit() {
   Activity::onExit();
 
-#ifndef CROSSPOINT_DEV_API  // dev builds keep Wi-Fi up for the control API
-  if (wifiActivated) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestartToReader();
+  if (!wifiActivated) return;
+  if (dev_api::enabled()) {
+    // Developer Mode keeps the connection for the control API; undo the
+    // sync's no-power-save setting, which the restart would otherwise reset.
+    WiFi.setSleep(true);
+    return;
   }
-#endif
+  WiFi.disconnect(false);
+  delay(30);
+  silentRestartToReader();
 }
 
 void KOReaderSyncActivity::chooseResultOption() {

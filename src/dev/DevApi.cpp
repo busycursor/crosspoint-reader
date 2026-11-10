@@ -39,6 +39,7 @@
 #include "WifiCredentialStore.h"
 #include "activities/ActivityManager.h"
 #include "activities/RenderLock.h"
+#include "activities/settings/SettingsSection.h"
 #include "components/themes/BaseTheme.h"
 #include "util/DictionaryRegistry.h"
 
@@ -147,10 +148,20 @@ std::set<std::tuple<int, int, std::string>> screenSeen;  // strips and passes re
 std::vector<std::string> screenShown;
 uint32_t screenSeq = 0;
 
+// Where decorateFrame() last drew the header badge. A frame drawn on top of
+// the previous one (a popup) still holds it, so it is erased before the next
+// scan; a cleared frame does not.
+struct BadgeBox {
+  bool valid = false;
+  int x = 0, y = 0, size = 0;
+};
+BadgeBox lastBadge;
+
 void onClear() {
   std::lock_guard<std::mutex> lock(screenMutex);
   screenBuilding.clear();
   screenSeen.clear();
+  lastBadge.valid = false;
 }
 void onText(int x, int y, const char* text) {
   std::lock_guard<std::mutex> lock(screenMutex);
@@ -163,7 +174,13 @@ void onDisplay() {
   ++screenSeq;
 }
 void decorateFrame() {
-  if (headerBadgeAllowed.load() && indicatorActive()) BaseTheme::drawApiBadgeInHeader(renderer);
+  if (lastBadge.valid) {
+    renderer.fillRect(lastBadge.x - 1, lastBadge.y - 1, lastBadge.size + 2, lastBadge.size + 2, false);
+    lastBadge.valid = false;
+  }
+  if (headerBadgeAllowed.load() && indicatorActive()) {
+    lastBadge.valid = BaseTheme::drawApiBadgeInHeader(renderer, lastBadge.x, lastBadge.y, lastBadge.size);
+  }
 }
 const GfxScreenTap kScreenTap{onClear, onText, onDisplay, decorateFrame};
 
@@ -311,7 +328,6 @@ void getSettings(const Request& req, Response& res) {
       &sdFontSystem.registry(), &dictionaries,
       [&](const char* key) { return key && (all || keys.find("," + std::string(key) + ",") != std::string::npos); },
       [&](const SettingInfo& s) {
-        if (s.webHidden) return;
         one.clear();
         if (settingToJson(s, one)) arr.add(one);
       });
@@ -330,7 +346,7 @@ void postSettings(const Request& req, Response& res) {
   JsonArray applied = out["applied"].to<JsonArray>();
   JsonArray rejected = out["rejected"].to<JsonArray>();
   for (const auto& s : getSettingsList(&sdFontSystem.registry(), &dictionaries)) {
-    if (!s.key || s.webHidden || !body[s.key].is<JsonVariant>()) continue;
+    if (!s.key || !body[s.key].is<JsonVariant>()) continue;
     (applySettingJson(s, body[s.key]) ? applied : rejected).add(s.key);
     body.remove(s.key);
   }
@@ -981,6 +997,39 @@ void pollSerial() {
 }
 
 // ---------------------------------------------------------------------------
+// Developer Mode switching
+
+bool modeWasOn = false;
+
+// Screens that bring Wi-Fi up for themselves; turning the mode off leaves
+// their connection alone.
+bool networkScreenInFront() {
+  const std::string name = activityManager.currentActivityName();
+  for (const char* n : {"CrossPointWebServer", "NetworkModeSelection", "WifiSelection", "CalibreConnect",
+                        "OpdsBookBrowser", "PluginCatalog", "ShelfSync", "KOReaderSync"}) {
+    if (name == n) return true;
+  }
+  return false;
+}
+
+void onModeChanged(const bool on) {
+  LOG_INF("DEV", "Developer Mode %s", on ? "on" : "off");
+  if (on) {
+    lastWifiAttemptMs = 0;  // connect right away
+    return;
+  }
+  if (serverStarted) {
+    server->stop();
+    server.reset();
+    serverStarted = false;
+  }
+  if (!networkScreenInFront() && WiFi.getMode() != WIFI_MODE_NULL) {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Wi-Fi upkeep
 
 // Several activities turn Wi-Fi off on exit; bring it back unless the user is
@@ -999,6 +1048,7 @@ void keepWifiUp() {
   if (!cred) return;  // send POST /dev/wifi over USB serial
   LOG_INF("DEV", "Dev API: connecting to %s", cred->ssid.c_str());
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(true);  // modem power save between requests
   WiFi.begin(cred->ssid.c_str(), cred->password.c_str());
 #endif
 }
@@ -1016,6 +1066,8 @@ void begin(void (*enterSleep)()) {
   // CrossPoint loads saved networks only when a Wi-Fi screen opens; the
   // reconnect in keepWifiUp() needs them from boot.
   WIFI_STORE.loadFromFile();
+  modeWasOn = enabled();
+  LOG_INF("DEV", "Developer Mode %s", modeWasOn ? "on" : "off");
   gfxScreenTap = &kScreenTap;
   if (CROSSPOINT_DEV_API_TOKEN[0] == '\0') LOG_ERR("DEV", "Dev API built without a token; HTTP requests refused");
 }
@@ -1039,7 +1091,13 @@ void updateBadge() {
 
 void loop() {
   updateBadge();
-  pollSerial();
+  pollSerial();  // always: a cable can switch Developer Mode on
+  const bool on = enabled();
+  if (on != modeWasOn) {
+    modeWasOn = on;
+    onModeChanged(on);
+  }
+  if (!on) return;
   keepWifiUp();
   if (!serverStarted) {
     if (WiFi.status() != WL_CONNECTED) return;
@@ -1089,9 +1147,15 @@ void applyPending() {
     activityManager.goHome();
   else if (s == "sync")
     activityManager.goToShelfSync();
-  else if (s == "settings")
-    activityManager.goToSettings();
-  else if (s == "library")
+  else if (s == "settings") {
+    // path picks a section: general, display, reader, controls, library, network
+    static const char* const kSections[] = {"general", "display", "reader", "controls", "library", "network"};
+    SettingsSection section = SettingsSection::End;
+    for (size_t i = 0; i < std::size(kSections); ++i) {
+      if (cmd.path == kSections[i]) section = static_cast<SettingsSection>(i);
+    }
+    activityManager.goToSettings(section);
+  } else if (s == "library")
     activityManager.goToLibrary();
   else if (s == "files")
     activityManager.goToFileBrowser(cmd.path);
@@ -1107,7 +1171,9 @@ void applyPending() {
     LOG_ERR("DEV", "Unknown screen: %s", s.c_str());
 }
 
-bool keepAwake() { return lastRequestMs != 0 && millis() - lastRequestMs < kKeepAwakeMs; }
+bool keepAwake() { return enabled() && lastRequestMs != 0 && millis() - lastRequestMs < kKeepAwakeMs; }
+
+bool enabled() { return SETTINGS.developerMode != 0; }
 
 bool indicatorActive() { return operationRunning || (lastChangeMs != 0 && millis() - lastChangeMs < kBadgeHoldMs); }
 

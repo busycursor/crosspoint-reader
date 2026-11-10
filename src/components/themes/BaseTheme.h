@@ -310,6 +310,7 @@ class BaseTheme {
   // it beside the header battery. Both are no-ops in release builds.
   static int apiBadgeSize(const GfxRenderer& renderer);
   static void drawApiBadge(const GfxRenderer& renderer, int x, int y, int size);
-  static void drawApiBadgeInHeader(const GfxRenderer& renderer);
+  // Returns the box it drew in (x, y, size), or false when there was no battery to sit beside.
+  static bool drawApiBadgeInHeader(const GfxRenderer& renderer, int& outX, int& outY, int& outSize);
   static void drawBatteryLightningBolt(const GfxRenderer& renderer, int boltX, int boltY);
 };

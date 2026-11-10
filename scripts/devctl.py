@@ -341,6 +341,18 @@ def sim_start(args) -> None:
     proc = subprocess.Popen([str(SIM_BINARY)], cwd=SIM_DIR, env=env, stdout=log, stderr=subprocess.STDOUT,
                             start_new_session=True)
     (SIM_DIR / "sim.pid").write_text(str(proc.pid))
+    # A fresh simulated device starts with Developer Mode off; switch it on
+    # over the serial pty (serial answers either way), then use HTTP.
+    for _ in range(50):
+        time.sleep(0.2)
+        if proc.poll() is not None:
+            sys.exit(f"simulator exited ({proc.returncode}); see {SIM_DIR / 'sim.log'}")
+        if SIM_PTY.exists():
+            try:
+                SerialClient(str(SIM_PTY), timeout=10).json("POST", "/dev/settings", {"developerMode": 1})
+                break
+            except (ApiError, OSError):
+                continue
     client = HttpClient(f"http://127.0.0.1:{API_PORT}", "sim", timeout=2)
     for _ in range(100):
         time.sleep(0.2)
@@ -473,13 +485,13 @@ def cmd_fs(c, args):
 
 
 PIO = Path.home() / ".platformio/penv/bin/pio"
-BUILD_ENVS = {"device": "x4pro-dev", "sim": "simulator_x4_pro"}
-DEVICE_IMAGE = FIRMWARE / ".pio/build/x4pro-dev/firmware.bin"
+BUILD_ENVS = {"device": "x4pro", "sim": "simulator_x4_pro"}
+DEVICE_IMAGE = FIRMWARE / ".pio/build/x4pro/firmware.bin"
 
 
 def build(targets: list[str]) -> None:
     """Build firmware environments. CROSSPOINT_DEV_API_TOKEN is always set from
-    the token file: x4pro-dev reads it via ${sysenv...}, so building with and
+    the token file: x4pro reads it via ${sysenv...}, so building with and
     without it changes PlatformIO's config checksum, and PlatformIO then
     deletes every environment's build output."""
     token = TOKEN_FILE.read_text().strip() if TOKEN_FILE.exists() else ""
