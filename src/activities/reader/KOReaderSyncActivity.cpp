@@ -25,6 +25,7 @@
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"  // list icons for the compare rows
 #include "fontIds.h"
+#include "network/WifiJoin.h"
 #include "network/WifiPowerSaveGuard.h"
 #include "util/PluginEvents.h"
 #include "util/PluginHttp.h"
@@ -469,6 +470,14 @@ void KOReaderSyncActivity::onEnter() {
     return;
   }
 
+  // A saved network in range needs no picker.
+  LOG_INF("KOSync", "Wi-Fi not connected (status %d, mode %d)", static_cast<int>(WiFi.status()),
+          static_cast<int>(WiFi.getMode()));
+  if (joinSavedWifi(10000)) {
+    onWifiSelectionComplete(true);
+    return;
+  }
+
   // Launch WiFi selection subactivity
   LOG_DBG("KOSync", "Launching WifiSelectionActivity...");
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
@@ -478,11 +487,13 @@ void KOReaderSyncActivity::onEnter() {
 void KOReaderSyncActivity::onExit() {
   Activity::onExit();
 
+#ifndef CROSSPOINT_DEV_API  // dev builds keep Wi-Fi up for the control API
   if (wifiActivated) {
     WiFi.disconnect(false);
     delay(30);
     silentRestartToReader();
   }
+#endif
 }
 
 void KOReaderSyncActivity::chooseResultOption() {
