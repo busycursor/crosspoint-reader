@@ -84,6 +84,9 @@ constexpr ThemeMetrics values = {.batteryWidth = 16,
 
 class LyraTheme : public BaseTheme {
  public:
+  // A subclass passes its own home cover height (LyraMetrics by default).
+  explicit LyraTheme(int coverHeight = LyraMetrics::values.homeCoverHeight) : coverHeight(coverHeight) {}
+
   // Component drawing methods
   void fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const override;
   void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
@@ -99,4 +102,7 @@ class LyraTheme : public BaseTheme {
                            std::function<bool()> storeCoverBuffer) const override;
   void drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) const;
   bool showsFileIcons() const override { return true; }
+
+ protected:
+  const int coverHeight;
 };

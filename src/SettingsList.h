@@ -250,11 +250,41 @@ inline SettingInfo buildShortPowerButtonSetting() {
                                   setShortPowerButtonFromDisplayValue, "shortPwrBtn", StrId::STR_CAT_CONTROLS);
 }
 
-inline std::vector<StrId> homeThemeValues() {
-  static constexpr StrId VALUES[] = {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
-                                     StrId::STR_THEME_ROUNDEDRAFF, StrId::STR_THEME_COVER_GRID};
-  const size_t count = UITheme::supportsCoverGrid() ? std::size(VALUES) : std::size(VALUES) - 1;
-  return {VALUES, VALUES + count};
+struct ThemeOption {
+  StrId label;
+  uint8_t value;
+};
+
+// Menu order differs from the persisted enum order, so map by value.
+inline std::vector<ThemeOption> themeOptions() {
+  std::vector<ThemeOption> options = {{StrId::STR_THEME_CLASSIC, CrossPointSettings::CLASSIC},
+                                      {StrId::STR_THEME_LYRA, CrossPointSettings::LYRA},
+                                      {StrId::STR_THEME_LYRA_COMPACT, CrossPointSettings::LYRA_COMPACT},
+                                      {StrId::STR_THEME_LYRA_EXTENDED, CrossPointSettings::LYRA_3_COVERS},
+                                      {StrId::STR_THEME_ROUNDEDRAFF, CrossPointSettings::ROUNDEDRAFF}};
+  if (UITheme::supportsCoverGrid()) options.push_back({StrId::STR_THEME_COVER_GRID, CrossPointSettings::COVER_GRID});
+  return options;
+}
+
+inline std::vector<StrId> themeLabels() {
+  std::vector<StrId> values;
+  for (const auto& option : themeOptions()) values.push_back(option.label);
+  return values;
+}
+
+// Cover Grid saved on a board without PSRAM shows as Lyra, the theme it draws.
+inline uint8_t themeDisplayValue() {
+  const auto options = themeOptions();
+  for (size_t i = 0; i < options.size(); i++) {
+    if (options[i].value == SETTINGS.uiTheme) return static_cast<uint8_t>(i);
+  }
+  return 1;
+}
+
+inline void setThemeFromDisplayValue(const uint8_t displayValue) {
+  const auto options = themeOptions();
+  SETTINGS.uiTheme = displayValue < options.size() ? options[displayValue].value : CrossPointSettings::LYRA;
+  UITheme::getInstance().reload();
 }
 
 using SettingVisitor = void (*)(void* context, SettingInfo& info);

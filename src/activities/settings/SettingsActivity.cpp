@@ -196,10 +196,10 @@ void SettingsActivity::activateIndex(const int index) {
   requestUpdate();
 }
 
-void SettingsActivity::applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr) {
+void SettingsActivity::applyUiSettingChange(bool themeChanged) {
   // Theme changes take effect immediately, on this screen — reload the theme
   // and re-derive the app's tokens so the very next repaint is in the new look.
-  if (valuePtr != &CrossPointSettings::uiTheme) {
+  if (!themeChanged) {
     return;
   }
   UITheme::getInstance().reload();
@@ -222,6 +222,7 @@ void SettingsActivity::toggleSelectedSetting() {
   const auto& setting = settings[selectedSetting];
   const bool sleepScreenChanged = setting.valuePtr == &CrossPointSettings::sleepScreen;
   const bool quickResumeTimeoutChanged = setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;
+  const bool themeChanged = setting.key != nullptr && strcmp(setting.key, "uiTheme") == 0;
 
   if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
     openSleepTimeoutPicker();
@@ -243,7 +244,6 @@ void SettingsActivity::toggleSelectedSetting() {
                          syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
                          SETTINGS.saveToFile();
                          rebuildSettings();
-                         applyUiSettingChange(valuePtr);
                        });
       requestUpdate();
       return;
@@ -256,11 +256,12 @@ void SettingsActivity::toggleSelectedSetting() {
     const uint8_t cur = setting.valueGetter();
     if (totalValues > 2) {
       const auto valueSetter = setting.valueSetter;
-      auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
+      auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged, themeChanged](int idx) {
         valueSetter(idx);
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
         SETTINGS.saveToFile();
         rebuildSettings();
+        applyUiSettingChange(themeChanged);
       };
       if (!setting.enumStringValues.empty()) {
         optionPopup.show(setting.nameId, setting.enumStringValues, cur, std::move(onSelect));
@@ -430,9 +431,8 @@ void SettingsActivity::toggleSelectedSetting() {
 
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
   SETTINGS.saveToFile();
-  const auto valuePtr = setting.valuePtr;  // rebuildSettings() replaces `setting`
-  rebuildSettings();
-  applyUiSettingChange(valuePtr);
+  rebuildSettings();  // replaces `setting`
+  applyUiSettingChange(themeChanged);
   // Rows can appear/disappear with a change (e.g. the footnote-back toggle).
   nav.selected = std::min(selectedSetting, static_cast<int>(settings.size()) - 1);
 }
