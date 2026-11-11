@@ -295,6 +295,15 @@ class BaseTheme {
                             std::string title, const int paddingBottom = 0, const int textYOffset = 0,
                             const bool fillMargin = true, const bool isPageBookmarked = false,
                             const bool pageCountEstimated = false);
+  // The centre of the status bar's text line as last drawn (where a centred
+  // clock sits), in the renderer orientation it was drawn in. False before
+  // any status bar was drawn.
+  struct StatusLine {
+    int centerX = 0;
+    int y = 0;
+    int orientation = 0;
+  };
+  static bool lastStatusLine(StatusLine& out);
   static void drawHelpText(const GfxRenderer& renderer, Rect rect, const char* label);
   virtual void drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth, bool cursorMode = false,
                              int contentStartX = 0, int contentWidth = 0) const;

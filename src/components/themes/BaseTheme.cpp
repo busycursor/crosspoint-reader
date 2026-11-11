@@ -919,6 +919,16 @@ void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layou
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
 
+namespace {
+bool haveStatusLine = false;
+BaseTheme::StatusLine statusLine;
+}  // namespace
+
+bool BaseTheme::lastStatusLine(StatusLine& out) {
+  out = statusLine;
+  return haveStatusLine;
+}
+
 void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage,
                               const int pageCount, std::string title, const int paddingBottom, const int textYOffset,
                               const bool fillMargin, const bool isPageBookmarked, const bool pageCountEstimated) {
@@ -933,6 +943,15 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   const auto screenHeight = renderer.getScreenHeight();
   auto textY = screenHeight - UITheme::getInstance().getStatusBarHeight() - orientedMarginBottom - paddingBottom - 4 +
                BoardConfig::ACTIVE.statusBarOffsetY;
+
+  // Where the centred text (clock, title) goes; Quick Resume's "Sleeping" label uses it.
+  statusLine.centerX =
+      metrics.statusBarHorizontalMargin + orientedMarginLeft +
+      (renderer.getScreenWidth() - 2 * metrics.statusBarHorizontalMargin - orientedMarginLeft - orientedMarginRight) /
+          2;
+  statusLine.y = textY - textYOffset;
+  statusLine.orientation = static_cast<int>(renderer.getOrientation());
+  haveStatusLine = true;
 
   // The side clusters sit in the bottom corners: clear the panel's rounded corners too.
   const int corner = BoardConfig::ACTIVE.bottomCornerRadius != 0 ? BoardConfig::ACTIVE.bottomCornerRadius

@@ -1100,8 +1100,12 @@ void SleepActivity::renderCoverSleepScreen() const {
 }
 
 void SleepActivity::renderLastScreenSleepScreen() const {
-  const auto pageHeight = renderer.getScreenHeight();
-  renderer.drawImage(MoonIcon, 0, pageHeight - MOONICON_HEIGHT, MOONICON_WIDTH, MOONICON_HEIGHT);
+  if (SETTINGS.quickResumeMarker == CrossPointSettings::MARKER_SLEEPING) {
+    drawSleepingLabel();
+  } else {
+    const auto pageHeight = renderer.getScreenHeight();
+    renderer.drawImage(MoonIcon, 0, pageHeight - MOONICON_HEIGHT, MOONICON_WIDTH, MOONICON_HEIGHT);
+  }
   // Only the moon differs from the displayed frame, so a differential FAST
   // update adds it without the flashing clean pass (which sweeps the panel
   // through the inverse — a full white flash on a night-mode page).
@@ -1110,6 +1114,31 @@ void SleepActivity::renderLastScreenSleepScreen() const {
   } else {
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
   }
+}
+
+void SleepActivity::drawSleepingLabel() const {
+  const char* label = tr(STR_MARKER_SLEEPING);
+  const auto restore = renderer.getOrientation();
+  BaseTheme::StatusLine line;
+  int centerX, y;
+  if (APP_STATE.lastSleepFromReader && BaseTheme::lastStatusLine(line)) {
+    // The status bar's centre, in the page's own orientation.
+    renderer.setOrientation(static_cast<GfxRenderer::Orientation>(line.orientation));
+    centerX = line.centerX;
+    y = line.y;
+  } else {
+    renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    centerX = renderer.getScreenWidth() / 2;
+    y = renderer.getScreenHeight() - UITheme::getInstance().getStatusBarHeight() - metrics.verticalSpacing;
+  }
+  // A white backing keeps the label readable over the clock or text below it.
+  constexpr int kPadX = 8, kPadY = 2;
+  const int width = renderer.getTextWidth(SMALL_FONT_ID, label);
+  const int height = renderer.getLineHeight(SMALL_FONT_ID);
+  renderer.fillRect(centerX - width / 2 - kPadX, y - kPadY, width + 2 * kPadX, height + 2 * kPadY, false);
+  renderer.drawText(SMALL_FONT_ID, centerX - width / 2, y, label);
+  renderer.setOrientation(restore);
 }
 
 void SleepActivity::renderBlankSleepScreen() const {
