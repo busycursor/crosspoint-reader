@@ -504,7 +504,7 @@ void FrontlightPanelActivity::loadHaRows() {
 int FrontlightPanelActivity::haRowsHeight(const int16_t lineHeight, const int16_t /*spaceSm*/,
                                           const int16_t spaceMd) const {
   if (haLightCount == 0 && haButtonCount == 0) return 0;
-  int y = haUnreachable() ? lineHeight + spaceMd : 0;  // why HA is unreachable
+  int y = 0;
   y += haLightCount * (lineHeight + spaceMd + kSliderRowHeight + 2 * spaceMd);
   if (haButtonCount > 0) y += kQuickControlSize + spaceMd;
   return y;
@@ -529,16 +529,8 @@ void FrontlightPanelActivity::addHaRows(UiScreen& screen) {
     return it != cache.end() && !it->second.name.empty() ? it->second.name.c_str() : e.entity.c_str();
   };
 
-  // No heading (the rows speak for themselves); a line says why when HA is
-  // unreachable, and the fade covers the controls below it.
-  const char* why = nullptr;
-  if (haShownStatus == ha::LinkStatus::NoNetwork) why = tr(STR_HA_NO_NETWORK);
-  if (haShownStatus == ha::LinkStatus::NoAnswer) why = tr(STR_HA_NO_ANSWER);
-  if (haShownStatus == ha::LinkStatus::TokenRejected) why = tr(STR_HA_TOKEN_REJECTED);
-  if (why) {
-    const fui::Rect whyRow = screen.takeTop(screen.target().lineHeight(theme.smallText.font), theme.spaceMd);
-    screen.target().text(whyRow, why, theme.smallText);
-  }
+  // No heading and no message: when HA cannot be reached the rows just fade
+  // (fadeHaRows); the next use tries again. The reason goes to the log.
   haTop = screen.contentRect().y;
 
   for (int r = 0; r < haLightCount; ++r) {
