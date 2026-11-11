@@ -18,7 +18,7 @@
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 
-enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, OPDS_BROWSER, FILE_TRANSFER, CONTROL, SETTINGS_MENU };
+enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, OPDS_BROWSER, FILE_TRANSFER, CONTROL, MORE, SETTINGS_MENU };
 
 /**
  * ActivityManager
@@ -94,6 +94,7 @@ class ActivityManager {
   void goToBrowser();
   void goToShelfSync();
   void goToControl();
+  void goToMore();
 #ifdef CROSSPOINT_DEV_API
   // Runs the KOReader sync in the open book; false when no EPUB reader is in front.
   bool devRunReaderSync();

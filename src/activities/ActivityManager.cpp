@@ -23,6 +23,7 @@
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
+#include "home/MoreActivity.h"
 #include "library/LibraryListActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/ShelfSyncActivity.h"
@@ -273,6 +274,8 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   }
 }
 
+void ActivityManager::goToMore() { replaceActivity(std::make_unique<MoreActivity>(renderer, mappedInput)); }
+
 void ActivityManager::goToControl() { replaceActivity(std::make_unique<ControlActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToFileTransfer() {
@@ -412,6 +415,10 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
       initialMenuItem = HomeMenuItem::OPDS_BROWSER;
     } else if (activityName == "CrossPointWebServer") {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
+    } else if (activityName == "Control") {
+      initialMenuItem = HomeMenuItem::CONTROL;
+    } else if (activityName == "More") {
+      initialMenuItem = HomeMenuItem::MORE;
     } else if (activityName == "Settings" || activityName == "SettingsList") {
       initialMenuItem = HomeMenuItem::SETTINGS_MENU;
     }

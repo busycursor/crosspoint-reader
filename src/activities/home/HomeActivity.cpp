@@ -29,17 +29,43 @@
 
 bool HomeActivity::hasControlSlot() { return ha::enabled() && !ha::config().dashboard.empty(); }
 
-int HomeActivity::getMenuItemCount() const {
-  int count = 4;  // File Browser, Library, File transfer, Settings
-  if (hasControlSlot()) count++;
-  if (!recentBooks.empty()) {
-    count += recentBooks.size();
+HomeActivity::MenuOrder HomeActivity::menuOrder() const {
+  MenuOrder order;
+  if (coverGridUi) {
+    order.add(HomeMenuItem::FILE_BROWSER);
+    order.add(HomeMenuItem::LIBRARY);
+    if (hasLibrarySlot()) order.add(HomeMenuItem::OPDS_BROWSER);
+    order.add(HomeMenuItem::FILE_TRANSFER);
+    if (hasControlSlot()) order.add(HomeMenuItem::CONTROL);
+    order.add(HomeMenuItem::SETTINGS_MENU);
+    return order;
   }
-  if (hasLibrarySlot()) {
-    count++;
-  }
-  return count;
+  order.add(HomeMenuItem::LIBRARY);
+  if (hasLibrarySlot()) order.add(HomeMenuItem::OPDS_BROWSER);
+  if (hasControlSlot()) order.add(HomeMenuItem::CONTROL);
+  order.add(HomeMenuItem::MORE);
+  order.add(HomeMenuItem::SETTINGS_MENU);
+  return order;
 }
+
+int HomeActivity::menuItemToIndex(HomeMenuItem item) const {
+  const MenuOrder order = menuOrder();
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int i = 0; i < order.count; ++i) {
+      if (order.items[i] == item) return i;
+    }
+    if (item != HomeMenuItem::FILE_BROWSER && item != HomeMenuItem::FILE_TRANSFER) break;
+    item = HomeMenuItem::MORE;
+  }
+  return 0;
+}
+
+HomeMenuItem HomeActivity::indexToMenuItem(const int idx) const {
+  const MenuOrder order = menuOrder();
+  return idx >= 0 && idx < order.count ? order.items[idx] : HomeMenuItem::NONE;
+}
+
+int HomeActivity::getMenuItemCount() const { return static_cast<int>(recentBooks.size()) + menuOrder().count; }
 
 void HomeActivity::loadRecentBooks(int maxBooks) {
   recentBooks.clear();
@@ -254,9 +280,7 @@ void HomeActivity::onEnter() {
   }
 
   const auto base = static_cast<int>(recentBooks.size());
-  selectorIndex = initialMenuItem == HomeMenuItem::NONE
-                      ? 0
-                      : base + menuItemToIndex(initialMenuItem, hasLibrarySlot(), hasControlSlot());
+  selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem);
 
   // Trigger first update
   requestUpdate();
@@ -318,7 +342,7 @@ void HomeActivity::loop() {
       return;
     }
     const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
-    switch (indexToMenuItem(menuIndex, hasLibrarySlot(), hasControlSlot())) {
+    switch (indexToMenuItem(menuIndex)) {
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -333,6 +357,9 @@ void HomeActivity::loop() {
         break;
       case HomeMenuItem::CONTROL:
         activityManager.goToControl();
+        break;
+      case HomeMenuItem::MORE:
+        activityManager.goToMore();
         break;
       case HomeMenuItem::SETTINGS_MENU:
         onSettingsOpen();
@@ -540,17 +567,41 @@ void HomeActivity::render(RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   // Build menu items dynamically
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_FILE_TRANSFER),
-                                        tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Library, Transfer, Settings};
-
-  if (hasControlSlot()) {
-    menuItems.insert(menuItems.end() - 1, tr(STR_CONTROL));
-    menuIcons.insert(menuIcons.end() - 1, House);
-  }
-  if (hasLibrarySlot()) {
-    menuItems.insert(menuItems.begin() + 2, hasPlugins ? tr(STR_PLUGINS) : tr(STR_SHELF_SYNC));
-    menuIcons.insert(menuIcons.begin() + 2, Plugins);
+  std::vector<const char*> menuItems;
+  std::vector<UIIcon> menuIcons;
+  const MenuOrder order = menuOrder();
+  for (int i = 0; i < order.count; ++i) {
+    switch (order.items[i]) {
+      case HomeMenuItem::FILE_BROWSER:
+        menuItems.push_back(tr(STR_BROWSE_FILES));
+        menuIcons.push_back(Folder);
+        break;
+      case HomeMenuItem::LIBRARY:
+        menuItems.push_back(tr(STR_LIBRARY));
+        menuIcons.push_back(Library);
+        break;
+      case HomeMenuItem::OPDS_BROWSER:
+        menuItems.push_back(hasPlugins ? tr(STR_PLUGINS) : tr(STR_SHELF_SYNC));
+        menuIcons.push_back(Plugins);
+        break;
+      case HomeMenuItem::FILE_TRANSFER:
+        menuItems.push_back(tr(STR_FILE_TRANSFER));
+        menuIcons.push_back(Transfer);
+        break;
+      case HomeMenuItem::CONTROL:
+        menuItems.push_back(tr(STR_CONTROL));
+        menuIcons.push_back(House);
+        break;
+      case HomeMenuItem::MORE:
+        menuItems.push_back(tr(STR_MORE));
+        menuIcons.push_back(More);
+        break;
+      case HomeMenuItem::SETTINGS_MENU:
+      default:
+        menuItems.push_back(tr(STR_SETTINGS_TITLE));
+        menuIcons.push_back(Settings);
+        break;
+    }
   }
 
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {

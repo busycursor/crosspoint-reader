@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <functional>
 #include <vector>
 
@@ -42,34 +43,18 @@ class HomeActivity final : public Activity {
   const HomeMenuItem initialMenuItem;
   const bool cleanInitialRefresh;
 
-  // Convert HomeMenuItem to menu index (used in onEnter)
-  static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl, bool hasControl) {
-    int i = 0;
-    if (item == HomeMenuItem::FILE_BROWSER) return i;
-    ++i;
-    if (item == HomeMenuItem::LIBRARY) return i;
-    ++i;
-    if (item == HomeMenuItem::OPDS_BROWSER) return hasOpdsUrl ? i : 0;
-    if (hasOpdsUrl) ++i;
-    if (item == HomeMenuItem::FILE_TRANSFER) return i;
-    ++i;
-    if (item == HomeMenuItem::CONTROL) return hasControl ? i : 0;
-    if (hasControl) ++i;
-    if (item == HomeMenuItem::SETTINGS_MENU) return i;
-    return 0;
-  }
-
-  // Convert menu index to HomeMenuItem (used in loop)
-  static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl, bool hasControl) {
-    int i = 0;
-    if (idx == i++) return HomeMenuItem::FILE_BROWSER;
-    if (idx == i++) return HomeMenuItem::LIBRARY;
-    if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
-    if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
-    if (hasControl && idx == i++) return HomeMenuItem::CONTROL;
-    if (idx == i) return HomeMenuItem::SETTINGS_MENU;
-    return HomeMenuItem::NONE;
-  }
+  // Menu rows after the recent books, in display order. The list home groups
+  // Browse Files and File Transfer under More; the cover grid's tab bar keeps
+  // one tab each.
+  struct MenuOrder {
+    std::array<HomeMenuItem, 7> items{};
+    int count = 0;
+    void add(HomeMenuItem item) { items[count++] = item; }
+  };
+  MenuOrder menuOrder() const;
+  // Row of an item, or of the row that holds it (More for its two entries); 0 if absent.
+  int menuItemToIndex(HomeMenuItem item) const;
+  HomeMenuItem indexToMenuItem(int idx) const;
   void onRecentBookSelected(const std::string& path);
   void onFileBrowserOpen();
   void onLibraryOpen();
