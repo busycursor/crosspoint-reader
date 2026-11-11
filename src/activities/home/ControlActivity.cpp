@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
@@ -263,9 +264,10 @@ void ControlActivity::drawCard(UiScreen& screen, const ha::Card& card, const int
 
   ha::ServiceCall tap;
   const bool tappable = ha::tapAction(card.entity, tap);
-  const bool on = ha::isToggleable(card.entity) && s.state == "on";
+  // Like the thing itself: on is white (lit), off is black.
+  const bool off = ha::isToggleable(card.entity) && s.state == "off";
   const fui::Rect box = screen.takeTop(kCardHeight, theme.spaceSm);
-  if (on) {
+  if (off) {
     screen.target().fill(box, ink, theme.controlRadius);
   } else if (tappable) {
     screen.target().stroke(box, ink, 2, theme.controlRadius);
@@ -273,7 +275,7 @@ void ControlActivity::drawCard(UiScreen& screen, const ha::Card& card, const int
     screen.target().stroke(box, fui::Paint::solid(fui::Color::Black), 1, theme.controlRadius);
   }
   fui::TextStyle label = theme.smallText;
-  label.color = on ? fui::Color::White : fui::Color::Black;
+  label.color = off ? fui::Color::White : fui::Color::Black;
   fui::TextStyle val = label;
   val.align = fui::TextAlign::Right;
   label.bold = true;
@@ -417,10 +419,18 @@ void ControlActivity::loop() {
     activityManager.goHome();
     return;
   }
-  const bool next = mappedInput.wasReleased(MappedInputManager::Button::Down) ||
-                    mappedInput.wasReleased(MappedInputManager::Button::Right);
-  const bool prev = mappedInput.wasReleased(MappedInputManager::Button::Up) ||
-                    mappedInput.wasReleased(MappedInputManager::Button::Left);
+  // Side buttons turn pages as they do in a book (Settings > Controls); with
+  // side page buttons disabled they still page, as Down/Up.
+  const bool sideOff = SETTINGS.sideButtonLayout == CrossPointSettings::SIDE_BUTTONS_DISABLED;
+  const bool next =
+      mappedInput.wasReleased(sideOff ? MappedInputManager::Button::Down : MappedInputManager::Button::PageForward) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Right);
+  const bool prev =
+      mappedInput.wasReleased(sideOff ? MappedInputManager::Button::Up : MappedInputManager::Button::PageBack) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Left);
+  if (next || prev)
+    LOG_INF("HA", "Control: %s pressed on page %d/%d", next ? "next" : "previous", page + 1,
+            static_cast<int>(pageStarts.size()));
   if (next && page + 1 < static_cast<int>(pageStarts.size())) {
     ++page;
     requestUpdate();

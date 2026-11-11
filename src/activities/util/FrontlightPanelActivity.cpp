@@ -504,7 +504,7 @@ void FrontlightPanelActivity::loadHaRows() {
 int FrontlightPanelActivity::haRowsHeight(const int16_t lineHeight, const int16_t /*spaceSm*/,
                                           const int16_t spaceMd) const {
   if (haLightCount == 0 && haButtonCount == 0) return 0;
-  int y = lineHeight + spaceMd;  // section title, or why HA is unreachable
+  int y = haUnreachable() ? lineHeight + spaceMd : 0;  // why HA is unreachable
   y += haLightCount * (lineHeight + spaceMd + kSliderRowHeight + 2 * spaceMd);
   if (haButtonCount > 0) y += kQuickControlSize + spaceMd;
   return y;
@@ -529,14 +529,17 @@ void FrontlightPanelActivity::addHaRows(UiScreen& screen) {
     return it != cache.end() && !it->second.name.empty() ? it->second.name.c_str() : e.entity.c_str();
   };
 
-  const char* title = tr(STR_HA_TITLE);
-  if (haShownStatus == ha::LinkStatus::NoNetwork) title = tr(STR_HA_NO_NETWORK);
-  if (haShownStatus == ha::LinkStatus::NoAnswer) title = tr(STR_HA_NO_ANSWER);
-  if (haShownStatus == ha::LinkStatus::TokenRejected) title = tr(STR_HA_TOKEN_REJECTED);
-  const fui::Rect titleRow = screen.takeTop(screen.target().lineHeight(theme.smallText.font), theme.spaceMd);
-  screen.target().text(titleRow, title, theme.smallText);
-  // The fade covers the controls, not the line saying why.
-  haTop = static_cast<int16_t>(titleRow.y + titleRow.height + theme.spaceMd);
+  // No heading (the rows speak for themselves); a line says why when HA is
+  // unreachable, and the fade covers the controls below it.
+  const char* why = nullptr;
+  if (haShownStatus == ha::LinkStatus::NoNetwork) why = tr(STR_HA_NO_NETWORK);
+  if (haShownStatus == ha::LinkStatus::NoAnswer) why = tr(STR_HA_NO_ANSWER);
+  if (haShownStatus == ha::LinkStatus::TokenRejected) why = tr(STR_HA_TOKEN_REJECTED);
+  if (why) {
+    const fui::Rect whyRow = screen.takeTop(screen.target().lineHeight(theme.smallText.font), theme.spaceMd);
+    screen.target().text(whyRow, why, theme.smallText);
+  }
+  haTop = screen.contentRect().y;
 
   for (int r = 0; r < haLightCount; ++r) {
     const auto& entry = sheet[haLights[r]];
@@ -577,12 +580,13 @@ void FrontlightPanelActivity::addHaRows(UiScreen& screen) {
     for (int b = 0; b < haButtonCount; ++b) {
       const auto& entry = sheet[haButtons[b]];
       const auto it = cache.find(entry.entity);
-      const bool on = it != cache.end() && it->second.state == "on";
+      // Like the thing itself: on is white (lit), off is black.
+      const bool off = it != cache.end() && ha::isToggleable(entry.entity) && it->second.state == "off";
       const int16_t left = static_cast<int16_t>(row.x + row.width * b / haButtonCount);
       const int16_t right = static_cast<int16_t>(row.x + row.width * (b + 1) / haButtonCount);
       const fui::Rect slot{static_cast<int16_t>(left + theme.spaceSm / 2), row.y,
                            static_cast<int16_t>(right - left - theme.spaceSm), row.height};
-      if (on) {
+      if (off) {
         screen.target().fill(slot, ink, theme.controlRadius);
       } else {
         screen.target().stroke(slot, ink, 2, theme.controlRadius);
@@ -590,7 +594,7 @@ void FrontlightPanelActivity::addHaRows(UiScreen& screen) {
       fui::TextStyle label = theme.smallText;
       label.align = fui::TextAlign::Center;
       label.maxLines = 2;
-      label.color = on ? fui::Color::White : fui::Color::Black;
+      label.color = off ? fui::Color::White : fui::Color::Black;
       const char* text = entry.entity == haPendingEntity ? "..." : nameOf(entry);
       const fui::Rect textRect{
           static_cast<int16_t>(slot.x + 4),
