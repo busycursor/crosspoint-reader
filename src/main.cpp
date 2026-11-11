@@ -164,10 +164,21 @@ static void armSilentReboot(const uint32_t target) {
   silentRebootMagic = SILENT_REBOOT_MAGIC;
 }
 
+bool heapRestartNeeded() { return HalMemory::getPsramHeap().totalBytes == 0; }
+
 // Returns instead of rebooting when sleep supersedes the reboot; callers keep
 // running in that case.
 static void silentRestartTo(const uint32_t target, const char* targetName) {
   if (deepSleepInProgress) return;  // sleeping supersedes the heap-defrag reboot
+  if (!heapRestartNeeded()) {
+    // Finish the Wi-Fi teardown in place; callers carry on as after a sleep veto.
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    const auto h = HalMemory::getInternalHeap();
+    LOG_INF("MAIN", "No restart (target=%s, PSRAM board): internal free=%u max_block=%u", targetName,
+            static_cast<unsigned>(h.freeBytes), static_cast<unsigned>(h.largestBlockBytes));
+    return;
+  }
   armSilentReboot(target);
   LOG_DBG("MAIN", "Silent restart (target=%s)", targetName);
   // E-ink retains the previous frame until the target's first paint lands
@@ -194,6 +205,7 @@ void silentRestartToJoinNetwork() {
   // this runs on the way *in*, unlike the exit-time silentRestart()).
   if (BoardConfig::hasTouch()) return;
 #endif
+  if (!heapRestartNeeded()) return;
   armSilentReboot(SILENT_REBOOT_TARGET_JOIN_NETWORK);
   LOG_DBG("MAIN", "Silent restart (target=join-network)");
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));

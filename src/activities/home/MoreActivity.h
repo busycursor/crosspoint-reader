@@ -13,7 +13,8 @@ class MoreActivity final : public Activity {
   int menuTop() const;
 
  public:
-  MoreActivity(GfxRenderer& renderer, MappedInputManager& mappedInput) : Activity("More", renderer, mappedInput) {}
+  MoreActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int selected = 0)
+      : Activity("More", renderer, mappedInput), selectorIndex(selected) {}
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;

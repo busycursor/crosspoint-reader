@@ -10,6 +10,7 @@
 #include <VectorFontSupport.h>
 
 #include <algorithm>
+#include <utility>
 
 #include "Activity.h"
 #include "CrossPointSettings.h"
@@ -261,6 +262,10 @@ void ActivityManager::exitActivity(const RenderLock& lock) {
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   mappedInput.resetHomeButtonInput();
+  // Only More's own children carry the way back to it.
+  if (newActivity && newActivity->name != "FileBrowser" && newActivity->name != "CrossPointWebServer") {
+    returnToMore = false;
+  }
   // Note: no lock here, this is usually called by loop() and we may run into deadlock
   if (currentActivity) {
     // Defer launch if we're currently in an activity, to avoid deleting the current activity
@@ -274,7 +279,9 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   }
 }
 
-void ActivityManager::goToMore() { replaceActivity(std::make_unique<MoreActivity>(renderer, mappedInput)); }
+void ActivityManager::goToMore(const int selected) {
+  replaceActivity(std::make_unique<MoreActivity>(renderer, mappedInput, selected));
+}
 
 void ActivityManager::goToControl() { replaceActivity(std::make_unique<ControlActivity>(renderer, mappedInput)); }
 
@@ -405,6 +412,14 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
 }
 
 void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefresh) {
+  const bool backToMore = std::exchange(returnToMore, false);
+  if (backToMore && initialMenuItem == HomeMenuItem::NONE && currentActivity) {
+    const auto& activityName = currentActivity->name;
+    if (activityName == "FileBrowser" || activityName == "CrossPointWebServer") {
+      goToMore(activityName == "FileBrowser" ? 0 : 1);
+      return;
+    }
+  }
   if (initialMenuItem == HomeMenuItem::NONE && currentActivity) {
     const auto& activityName = currentActivity->name;
     if (activityName == "FileBrowser") {

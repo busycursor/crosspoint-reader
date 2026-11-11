@@ -42,6 +42,7 @@ class ActivityManager {
   MappedInputManager& mappedInput;
   std::vector<std::unique_ptr<Activity>> stackActivities;
   std::unique_ptr<Activity> currentActivity;
+  bool returnToMore = false;  // set by More when it opens Browse Files or File Transfer
 
   void exitActivity(const RenderLock& lock);
 
@@ -94,7 +95,10 @@ class ActivityManager {
   void goToBrowser();
   void goToShelfSync();
   void goToControl();
-  void goToMore();
+  // selected: the row to start on (0 Browse Files, 1 File Transfer).
+  void goToMore(int selected = 0);
+  // The next goHome() from Browse Files or File Transfer returns to More.
+  void returnToMoreOnExit() { returnToMore = true; }
 #ifdef CROSSPOINT_DEV_API
   // Runs the KOReader sync in the open book; false when no EPUB reader is in front.
   bool devRunReaderSync();

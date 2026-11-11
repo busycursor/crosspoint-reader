@@ -23,6 +23,7 @@ int MoreActivity::menuTop() const {
 }
 
 void MoreActivity::activate(const int index) {
+  activityManager.returnToMoreOnExit();
   if (index == 0) {
     activityManager.goToFileBrowser();
   } else {

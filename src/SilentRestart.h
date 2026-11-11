@@ -7,13 +7,18 @@
 // comes back exactly as it was, regardless of the Restore Light on Wake
 // preference.
 
+// Boards with PSRAM skip these heap-defrag reboots: large allocations live in
+// PSRAM, so the fragmentation they clear does not matter there. The calls then
+// turn Wi-Fi off and return, and callers carry on in place.
+bool heapRestartNeeded();
+
 void silentRestart();            // home screen
 void silentRestartToReader();    // currently-open EPUB (APP_STATE.openEpubPath)
 void silentRestartToSettings();  // settings screen
 // Reboot into the File Transfer > Join Network flow on a pristine heap, so the
 // WiFi + TLS working set has the contiguous RAM it needs on tight boards. A
 // no-op on touch boards (a soft reset would cycle their externally-powered
-// rails); the caller then proceeds without a reboot.
+// rails) and on PSRAM boards; the caller then proceeds without a reboot.
 void silentRestartToJoinNetwork();
 
 // Reboots immediately after an activity releases exclusive raw storage. The
