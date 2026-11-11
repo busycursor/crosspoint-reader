@@ -136,9 +136,11 @@ void ControlActivity::buildScreen(UiScreen& screen) {
 
   // Why the cards may be stale, or nothing when they are live.
   const char* why = nullptr;
-  if (shownStatus == ha::LinkStatus::NoNetwork) why = tr(STR_HA_NO_NETWORK);
-  if (shownStatus == ha::LinkStatus::NoAnswer) why = tr(STR_HA_NO_ANSWER);
-  if (shownStatus == ha::LinkStatus::TokenRejected) why = tr(STR_HA_TOKEN_REJECTED);
+  // One message for every failure; the log has the specific reason.
+  if (shownStatus == ha::LinkStatus::NoNetwork || shownStatus == ha::LinkStatus::NoAnswer ||
+      shownStatus == ha::LinkStatus::TokenRejected) {
+    why = tr(STR_HA_CANNOT_CONNECT);
+  }
   const fui::Rect statusRow = screen.takeTop(line, theme.spaceSm);
   if (why) {
     screen.target().text(statusRow, why, theme.smallText);
