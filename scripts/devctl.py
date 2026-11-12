@@ -552,9 +552,16 @@ def cmd_flash(c, args):
         stop.set()
         pinger.join()
     image = Path(args.image) if args.image else DEVICE_IMAGE
+    data = image.read_bytes()
+    # An image without this token (e.g. from a plain `pio run`) refuses every
+    # dev API request once flashed, which locks out Wi-Fi flashing.
+    token = TOKEN_FILE.read_text().strip() if TOKEN_FILE.exists() else ""
+    if not token or token.encode() not in data:
+        sys.exit(f"{image} does not contain the dev API token from {TOKEN_FILE}; "
+                 "flashing it would lock out the dev API. Build it with `devctl build device`.")
     target = "/.crosspoint/dev-firmware.bin"
-    print(f"uploading {image.stat().st_size} bytes ...")
-    c.upload(target, image.read_bytes())
+    print(f"uploading {len(data)} bytes ...")
+    c.upload(target, data)
     print("flashing ...")
     if isinstance(c, HttpClient):
         c.timeout = 120
