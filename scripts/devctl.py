@@ -41,6 +41,7 @@ import struct
 import subprocess
 import sys
 import termios
+import threading
 import time
 import tty
 import urllib.error
@@ -517,9 +518,39 @@ def build(targets: list[str]) -> None:
     print("built")
 
 
+def keep_device_awake(c) -> tuple[threading.Event, threading.Thread]:
+    """Pings the device until the returned event is set. Every dev API request
+    restarts its keep-awake window (kKeepAwakeMs), so it cannot auto-sleep
+    while the image builds. Join the thread before the next request: the
+    serial client cannot share its port between two requests."""
+    stop = threading.Event()
+
+    def ping() -> None:
+        while not stop.wait(60):
+            try:
+                c.json("GET", "/dev/info")
+            except Exception:  # a missed ping is caught by the upload itself
+                pass
+
+    thread = threading.Thread(target=ping, daemon=True)
+    thread.start()
+    return stop, thread
+
+
 def cmd_flash(c, args):
-    if not args.image:
-        build(["device"])
+    # Fail before a long build if the device is asleep, and start its
+    # keep-awake window; then keep it open while building.
+    try:
+        c.json("GET", "/dev/info")
+    except Exception as e:
+        sys.exit(f"device not reachable ({e}); wake it (Developer Mode on) and try again")
+    stop, pinger = keep_device_awake(c)
+    try:
+        if not args.image:
+            build(["device"])
+    finally:
+        stop.set()
+        pinger.join()
     image = Path(args.image) if args.image else DEVICE_IMAGE
     target = "/.crosspoint/dev-firmware.bin"
     print(f"uploading {image.stat().st_size} bytes ...")
