@@ -33,6 +33,7 @@
 #include "SilentRestart.h"
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
+#include "activities/lists/FavouriteListActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
@@ -40,6 +41,7 @@
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
 #include "util/PluginEvents.h"
+#include "vikunja/VikunjaStore.h"
 
 namespace fui = freeink::ui;
 
@@ -137,6 +139,7 @@ void SettingsActivity::rebuildSettings() {
   addAction(SettingsSection::Network, StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync);
   addAction(SettingsSection::Network, StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser);
   addAction(SettingsSection::Network, StrId::STR_PLUGINS, SettingAction::Plugins);
+  if (vikunja::enabled()) addAction(SettingsSection::Network, StrId::STR_FAVOURITE_LIST, SettingAction::FavouriteList);
   addAction(SettingsSection::Network, StrId::STR_DEVELOPER_MODE, SettingAction::DeveloperMode);
 
   // OTA fetches this board's own release asset (see OtaUpdater); boards whose
@@ -295,6 +298,9 @@ void SettingsActivity::toggleSelectedSetting() {
         startActivityForResult(std::move(activity), [this](const ActivityResult&) { requestUpdate(); });
         return;
       }
+      case SettingAction::FavouriteList:
+        startActivityForResult(std::make_unique<FavouriteListActivity>(renderer, mappedInput), resultHandler);
+        break;
       case SettingAction::RemapFrontButtons:
         startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), resultHandler);
         break;

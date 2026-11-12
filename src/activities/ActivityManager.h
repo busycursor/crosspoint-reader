@@ -18,7 +18,17 @@
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 
-enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, OPDS_BROWSER, FILE_TRANSFER, CONTROL, MORE, SETTINGS_MENU };
+enum class HomeMenuItem {
+  NONE,
+  FILE_BROWSER,
+  LIBRARY,
+  OPDS_BROWSER,
+  FILE_TRANSFER,
+  CONTROL,
+  LISTS,
+  MORE,
+  SETTINGS_MENU
+};
 
 /**
  * ActivityManager
@@ -97,6 +107,7 @@ class ActivityManager {
   void goToControl();
   // selected: the row to start on (0 Browse Files, 1 File Transfer).
   void goToMore(int selected = 0);
+  void goToLists();
   // The next goHome() from Browse Files or File Transfer returns to More.
   void returnToMoreOnExit() { returnToMore = true; }
 #ifdef CROSSPOINT_DEV_API

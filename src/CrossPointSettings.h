@@ -371,6 +371,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;
   // UI Theme
   uint8_t uiTheme = LYRA;
+  // Vikunja project Lists opens straight into; 0: the first one starred in
+  // Vikunja. Set from Settings.
+  int64_t vikunjaFavourite = 0;
   // Sunlight fading compensation
   uint8_t fadingFix = 0;
   // Power button return from footnotes (1 = enabled, 0 = disabled)

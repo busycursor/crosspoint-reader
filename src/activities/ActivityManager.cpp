@@ -26,6 +26,7 @@
 #include "home/HomeActivity.h"
 #include "home/MoreActivity.h"
 #include "library/LibraryListActivity.h"
+#include "lists/ListsActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/ShelfSyncActivity.h"
 #include "network/UsbDriveActivity.h"
@@ -283,6 +284,8 @@ void ActivityManager::goToMore(const int selected) {
   replaceActivity(std::make_unique<MoreActivity>(renderer, mappedInput, selected));
 }
 
+void ActivityManager::goToLists() { replaceActivity(std::make_unique<ListsActivity>(renderer, mappedInput)); }
+
 void ActivityManager::goToControl() { replaceActivity(std::make_unique<ControlActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToFileTransfer() {
@@ -434,6 +437,8 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
       initialMenuItem = HomeMenuItem::CONTROL;
     } else if (activityName == "More") {
       initialMenuItem = HomeMenuItem::MORE;
+    } else if (activityName == "Lists" || activityName == "ListItems") {
+      initialMenuItem = HomeMenuItem::LISTS;
     } else if (activityName == "Settings" || activityName == "SettingsList") {
       initialMenuItem = HomeMenuItem::SETTINGS_MENU;
     }

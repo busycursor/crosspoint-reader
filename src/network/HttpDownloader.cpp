@@ -33,6 +33,16 @@ void applyCommonClientSetup(freeink::SecureHttpClient& http) {
   http.setUserAgent("CrossPoint-ESP32-" CROSSPOINT_VERSION);
 }
 
+// Bearer (or else Basic) auth and the caller's extra headers.
+void applyAuth(freeink::SecureHttpClient& http, const HttpDownloader::FetchOptions& options) {
+  if (!options.bearer.empty()) {
+    http.addHeader("Authorization", "Bearer " + options.bearer);
+  } else if (!options.username.empty() && !options.password.empty()) {
+    http.setBasicAuth(options.username, options.password);
+  }
+  for (const auto& h : options.headers) http.addHeader(h.first, h.second);
+}
+
 // Written after every request, and read by the UI right after a failure.
 int g_lastStatus = 0;
 // Whether the last answer came from another origin than the request started at.
@@ -129,14 +139,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
     applyCommonClientSetup(http);
     // Credentials belong to the starting origin only: a redirect to another
     // origin (a CDN) must not receive them.
-    if (freeink::fetchOrigin(current) == startOrigin) {
-      if (!options.bearer.empty()) {
-        http.addHeader("Authorization", "Bearer " + options.bearer);
-      } else if (!options.username.empty() && !options.password.empty()) {
-        http.setBasicAuth(options.username, options.password);
-      }
-      for (const auto& h : options.headers) http.addHeader(h.first, h.second);
-    }
+    if (freeink::fetchOrigin(current) == startOrigin) applyAuth(http, options);
     if (!options.accept.empty()) http.addHeader("Accept", options.accept);
     if (!options.acceptLanguage.empty()) http.addHeader("Accept-Language", options.acceptLanguage);
 
@@ -185,6 +188,27 @@ bool HttpDownloader::postForm(const std::string& url, const std::string& formBod
                                         return true;
                                       });
   if (statusOut) *statusOut = status > 0 ? status : 0;
+  return status >= 200 && status < 300;
+}
+
+bool HttpDownloader::postJson(const std::string& url, const std::string& body, const FetchOptions& options) {
+  WifiPowerSaveGuard psGuard;
+  freeink::SecureHttpClient http;
+  int status = 0;
+  if (http.begin(url)) {
+    applyCommonClientSetup(http);
+    applyAuth(http, options);
+    if (!options.accept.empty()) http.addHeader("Accept", options.accept);
+    http.addHeader("Content-Type", "application/json");
+    LOG_DBG("HTTP", "wolfSSL POST json: %s", url.c_str());
+    status = http.sendRequest("POST", reinterpret_cast<const uint8_t*>(body.data()), body.size(),
+                              [](const uint8_t*, size_t) { return true; });
+  } else {
+    LOG_ERR("HTTP", "bad URL: %s", url.c_str());
+  }
+  g_lastStatus = status > 0 ? status : 0;
+  g_lastRedirected = false;
+  if (options.statusOut) *options.statusOut = g_lastStatus;
   return status >= 200 && status < 300;
 }
 

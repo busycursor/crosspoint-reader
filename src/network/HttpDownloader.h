@@ -99,6 +99,13 @@ class HttpDownloader {
                        int* statusOut = nullptr);
 
   /**
+   * POST a JSON body with the auth and extra headers from `options`
+   * (bearer, Basic, headers; accept and statusOut apply too). Redirects
+   * are not followed. The response body is discarded. True on 2xx.
+   */
+  static bool postJson(const std::string& url, const std::string& body, const FetchOptions& options);
+
+  /**
    * Download a file to the SD card with optional credentials. `headers` are
    * added to the request (e.g. a Bearer Authorization), alongside any Basic
    * auth derived from username/password.

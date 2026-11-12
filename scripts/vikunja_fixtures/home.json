@@ -1,0 +1,18 @@
+{
+  "projects": [
+    { "id": 5, "title": "Household", "parent_project_id": 0, "is_archived": false },
+    { "id": 7, "title": "Groceries", "parent_project_id": 5, "is_archived": false },
+    { "id": 8, "title": "Hardware store", "parent_project_id": 5, "is_archived": false },
+    { "id": 99, "title": "Old list", "parent_project_id": 0, "is_archived": true }
+  ],
+  "tasks": [
+    { "id": 101, "project_id": 7, "title": "Milk", "done": false, "position": 1 },
+    { "id": 102, "project_id": 7, "title": "Bread", "done": false, "position": 2 },
+    { "id": 103, "project_id": 7, "title": "Eggs 🥚", "done": false, "position": 3 },
+    { "id": 104, "project_id": 7, "title": "A rather long item title that will not fit on one row of the screen", "done": false, "position": 4 },
+    { "id": 105, "project_id": 7, "title": "Coffee", "done": true, "done_at": "2026-11-10T10:00:00Z", "position": 5 },
+    { "id": 106, "project_id": 7, "title": "Apples", "done": true, "done_at": "2026-11-09T10:00:00Z", "position": 6 },
+    { "id": 201, "project_id": 8, "title": "Screws", "done": false, "position": 1 },
+    { "id": 301, "project_id": 5, "title": "Call plumber", "done": false, "position": 1 }
+  ]
+}

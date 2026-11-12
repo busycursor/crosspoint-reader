@@ -54,6 +54,7 @@
 #include "util/ScreenshotUtil.h"
 #include "util/SlideSwitch.h"
 #include "util/Timezones.h"
+#include "vikunja/VikunjaStore.h"
 
 #if CROSSPOINT_VECTOR_FONTS
 // Rendering (incl. FreeType TTF rasterization) runs on the Arduino loop task.
@@ -687,6 +688,7 @@ void setup() {
   OPDS_TOKENS.loadFromFile();
   LCP_PASSPHRASES.loadFromFile();
   ha::loadConfigStore();
+  vikunja::loadStore();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
   pluginevents::refreshSubscriptions();

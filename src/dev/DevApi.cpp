@@ -1387,6 +1387,8 @@ void applyPending() {
     activityManager.goToControl();
   else if (s == "more")
     activityManager.goToMore();
+  else if (s == "lists")
+    activityManager.goToLists();
   else if (s == "opds")
     activityManager.goToBrowser();
   else if (s == "reader" && !cmd.path.empty())

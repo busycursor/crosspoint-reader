@@ -26,6 +26,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "homeassistant/HaConfigStore.h"
+#include "vikunja/VikunjaStore.h"
 
 bool HomeActivity::hasControlSlot() { return ha::enabled() && !ha::config().dashboard.empty(); }
 
@@ -43,6 +44,7 @@ HomeActivity::MenuOrder HomeActivity::menuOrder() const {
   order.add(HomeMenuItem::LIBRARY);
   if (hasLibrarySlot()) order.add(HomeMenuItem::OPDS_BROWSER);
   if (hasControlSlot()) order.add(HomeMenuItem::CONTROL);
+  if (vikunja::enabled()) order.add(HomeMenuItem::LISTS);
   order.add(HomeMenuItem::MORE);
   order.add(HomeMenuItem::SETTINGS_MENU);
   return order;
@@ -358,6 +360,9 @@ void HomeActivity::loop() {
       case HomeMenuItem::CONTROL:
         activityManager.goToControl();
         break;
+      case HomeMenuItem::LISTS:
+        activityManager.goToLists();
+        break;
       case HomeMenuItem::MORE:
         activityManager.goToMore();
         break;
@@ -591,6 +596,10 @@ void HomeActivity::render(RenderLock&&) {
       case HomeMenuItem::CONTROL:
         menuItems.push_back(tr(STR_CONTROL));
         menuIcons.push_back(House);
+        break;
+      case HomeMenuItem::LISTS:
+        menuItems.push_back(tr(STR_LISTS));
+        menuIcons.push_back(Lists);
         break;
       case HomeMenuItem::MORE:
         menuItems.push_back(tr(STR_MORE));

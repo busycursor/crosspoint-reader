@@ -32,6 +32,7 @@ enum class SettingAction {
   DeveloperMode,
   KeyboardLayouts,
   HomeButton,
+  FavouriteList,
   About,
 };
 
